@@ -1,0 +1,17 @@
+/*
+!/.gitignore
+!/.gitmodules
+!/README.md
+!/Makefile
+!/LICENSE
+!/src/
+/src/*
+!/src/*.c
+!/src/*.h
+!/src/generate_opcodes.py
+!/src/generate_jsc_hook.py
+!/src/jsc_hook.ld
+!/src/jsc_patch.js
+!/src/vendor/
+/src/vendor/*
+!/src/vendor/hermes/

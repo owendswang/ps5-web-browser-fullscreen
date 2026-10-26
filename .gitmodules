@@ -1,0 +1,5 @@
+# Hermes v0.12.0; the gitlink pins 7d3e091b59ff5e5a9e722718c01d81dab52d4300.
+[submodule "hermes"]
+	path = src/vendor/hermes
+	url = https://github.com/facebook/hermes.git
+	shallow = true
