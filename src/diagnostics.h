@@ -5,9 +5,22 @@
 #include <time.h>
 #include "hybrid_cache_io.h"
 #include "jsc_cache.h"
-enum { DIAG_EVENTS=24, DIAG_EVENT_BYTES=192, DIAG_CAPACITY=8192 };
+#if FULLSCREEN_PASSIVE_DIAGNOSTICS
+#define DIAG_BUILD "2026-10-28-passive-vm-diagnostics-v5"
+#elif TEST_HBC_LIVE_PLAN
+#define DIAG_BUILD "2026-10-28-test-community-1001-v10"
+#elif TEST_HBC_EXPORT
+#define DIAG_BUILD "2026-10-28-test-hbc-evidence-v7"
+#elif FULLSCREEN_SAFE_SCAN
+#define DIAG_BUILD "2026-10-28-test-open-home-v6"
+#else
+#define DIAG_BUILD "2026-10-28-community-1001-v10"
+#endif
+enum { DIAG_EVENTS=256, DIAG_EVENT_BYTES=192, DIAG_CAPACITY=54272 };
+_Static_assert(DIAG_CAPACITY+HYBRID_CACHE_CAPACITY<INI_FILE_CAPACITY,"profile and report capacity");
 struct diagnostic_report {
-    uint32_t firmware,timestamp,pid,result,error_code,total,dropped,truncated;
+    uint32_t version,firmware,timestamp,pid,result,error_code,total,dropped,truncated;
+    char build[64];
     char engine[16],operation[16],stage[64],reason[256],summary[256],cache[80];
     char hermes[8],jsc[8],events[DIAG_EVENTS][DIAG_EVENT_BYTES];
 };
@@ -23,7 +36,8 @@ static inline void diag_text(char *out, size_t size, const char *text) {
     snprintf(out,size,"%s",text?text:""); diag_ascii(out);
 }
 static inline void diag_begin(uint32_t firmware, const char *operation) {
-    memset(&diagnostic,0,sizeof(diagnostic)); diagnostic.firmware=firmware;
+    memset(&diagnostic,0,sizeof(diagnostic)); diagnostic.version=2; diagnostic.firmware=firmware;
+    diag_text(diagnostic.build,sizeof(diagnostic.build),DIAG_BUILD);
     time_t now=time(NULL); diagnostic.timestamp=now>0 && (uint64_t)now<=UINT32_MAX?(uint32_t)now:0;
     diag_text(diagnostic.operation,sizeof(diagnostic.operation),operation);
     diag_text(diagnostic.engine,sizeof(diagnostic.engine),"unknown");
@@ -48,6 +62,15 @@ static inline void diag_bytes(const char *label, const uint8_t *bytes, size_t le
     for(size_t i=0;i<length;i++)snprintf(hex+i*2,3,"%02x",bytes[i]);
     hex[length*2]=0; diag_event("%s=%s",label,hex);
 }
+/* Retain complete bounded code/header windows, not just a function prologue. */
+static inline void diag_span(const char *label, const uint8_t *bytes, size_t length) {
+    size_t bounded=length>512?512:length;
+    for(size_t at=0;at<bounded;at+=64) {
+        char key[48]; snprintf(key,sizeof(key),"%.32s+%03zx",label,at);
+        diag_bytes(key,bytes+at,bounded-at<64?bounded-at:64);
+    }
+    if(length>bounded)diag_event("%s: sample limited to %zu/%zu bytes",label,bounded,length);
+}
 static inline void diag_error(const char *stage, uint32_t code, const char *format, ...) {
     diag_text(diagnostic.stage,sizeof(diagnostic.stage),stage); diagnostic.error_code=code;
     va_list args; va_start(args,format); vsnprintf(diagnostic.reason,sizeof(diagnostic.reason),format,args); va_end(args);
@@ -62,7 +85,9 @@ static inline void diag_engine(int hermes, int jsc, const char *engine) {
 }
 static inline void diag_body(struct fp_writer *w, const struct diagnostic_report *d) {
     unsigned count=d->total<DIAG_EVENTS?d->total:DIAG_EVENTS;
-    fp_write(w,"[diagnostics]\nformat=web-browser-fullscreen-failure\nversion=1\ntimestamp_unix=%u\nfirmware=0x%08x\nengine=%s\noperation=%s\nresult=%u\nshellui_pid=%u\nhermes_loaded=%s\njsc_loaded=%s\nstage=%s\nreason=%s\nsummary=%s\nerror_code=0x%08x\ncache_state=%s\nevent_count=%u\nevents_dropped=%u\nevents_truncated=%u\n",
+    fp_write(w,"[diagnostics]\nformat=web-browser-fullscreen-failure\nversion=%u\n",d->version);
+    if(d->version>=2)fp_write(w,"build=%s\n",d->build);
+    fp_write(w,"timestamp_unix=%u\nfirmware=0x%08x\nengine=%s\noperation=%s\nresult=%u\nshellui_pid=%u\nhermes_loaded=%s\njsc_loaded=%s\nstage=%s\nreason=%s\nsummary=%s\nerror_code=0x%08x\ncache_state=%s\nevent_count=%u\nevents_dropped=%u\nevents_truncated=%u\n",
              d->timestamp,d->firmware,d->engine,d->operation,d->result,d->pid,d->hermes,d->jsc,d->stage,d->reason,d->summary,
              d->error_code,d->cache,count,d->dropped,d->truncated);
     for(unsigned i=0;i<count;i++) {
@@ -89,13 +114,15 @@ static inline int diag_decode(const uint8_t *data, size_t length, struct diagnos
     struct hc_reader r={.data=data,.length=length}; uint32_t version,count,crc;
     memset(d,0,sizeof(*d));
     if(hc_expect(&r,"[diagnostics]") || hc_match(&r,"format","web-browser-fullscreen-failure") ||
-       hc_number(&r,"version",&version) || version!=1)return -1;
+       hc_number(&r,"version",&version) || (version!=1 && version!=2))return -1;
+    d->version=version;
+    if(version>=2 && diag_value(&r,"build",d->build,sizeof(d->build)))return -1;
 #define DN(key,field) if(hc_number(&r,key,&d->field))return -1
 #define DT(key,field) if(diag_value(&r,key,d->field,sizeof(d->field)))return -1
     DN("timestamp_unix",timestamp); DN("firmware",firmware); DT("engine",engine); DT("operation",operation);
     DN("result",result); DN("shellui_pid",pid); DT("hermes_loaded",hermes); DT("jsc_loaded",jsc);
     DT("stage",stage); DT("reason",reason); DT("summary",summary); DN("error_code",error_code); DT("cache_state",cache);
-    if(hc_number(&r,"event_count",&count) || count>DIAG_EVENTS)return -1;
+    if(hc_number(&r,"event_count",&count) || count>(version==1?24U:DIAG_EVENTS))return -1;
     DN("events_dropped",dropped); DN("events_truncated",truncated);
 #undef DN
 #undef DT
@@ -104,7 +131,10 @@ static inline int diag_decode(const uint8_t *data, size_t length, struct diagnos
         char key[32]; snprintf(key,sizeof(key),"event.%u",i);
         if(diag_value(&r,key,d->events[i],sizeof(d->events[i])))return -1;
     }
-    if(hc_number(&r,"crc32",&crc) || hc_line(&r) || (d->result!=1 && d->result!=2))return -1;
+    if(hc_number(&r,"crc32",&crc) || hc_line(&r) || d->result>2)return -1;
+    /* A successful test may retain export warnings or live-plan evidence. */
+    if(!d->result && (d->version<2 || (strcmp(d->stage,"test.hermes_export") &&
+                                     strcmp(d->stage,"test.hermes_live_plan"))))return -1;
     uint8_t canonical[DIAG_CAPACITY]; struct fp_writer w={.data=(char *)canonical,.capacity=sizeof(canonical)};
     diag_body(&w,d); return w.failed || hc_crc(canonical,w.length)!=crc?-1:0;
 }
@@ -134,7 +164,8 @@ static inline int diag_clear(const char *path) {
     free(file); return result;
 }
 static inline void diag_print(const struct diagnostic_report *d) {
-    printf("Last failure diagnostics: timestamp=%u firmware=%08x engine=%s operation=%s result=%u\nStage: %s\nReason: %s\nSummary: %s\nError code: 0x%08x; cache: %s\n",
+    printf("Diagnostics format=%u build=%s\n",d->version,d->version>=2?d->build:"legacy");
+    printf("Last operation diagnostics: timestamp=%u firmware=%08x engine=%s operation=%s result=%u\nStage: %s\nReason: %s\nSummary: %s\nError code: 0x%08x; cache: %s\n",
            d->timestamp,d->firmware,d->engine,d->operation,d->result,d->stage,d->reason,d->summary,d->error_code,d->cache);
     printf("ShellUI PID: %u; loaded Hermes=%s JSC=%s; events dropped=%u truncated=%u\n",d->pid,d->hermes,d->jsc,d->dropped,d->truncated);
     unsigned count=d->total<DIAG_EVENTS?d->total:DIAG_EVENTS;
@@ -145,9 +176,11 @@ static inline void diag_print(const struct diagnostic_report *d) {
 #undef DIAG_ERROR
 #undef DIAG_ENGINE
 #undef DIAG_BYTES
+#undef DIAG_SPAN
 #define DIAG_STEP(...) diag_step(__VA_ARGS__)
 #define DIAG_EVENT(...) diag_event(__VA_ARGS__)
 #define DIAG_ERROR(...) diag_error(__VA_ARGS__)
 #define DIAG_ENGINE(...) diag_engine(__VA_ARGS__)
 #define DIAG_BYTES(...) diag_bytes(__VA_ARGS__)
+#define DIAG_SPAN(...) diag_span(__VA_ARGS__)
 #endif

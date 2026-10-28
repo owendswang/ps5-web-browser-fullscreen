@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#define INI_FILE_CAPACITY 16384U
+#define INI_FILE_CAPACITY 65536U
 /* Failure diagnostics are independent of the reusable profile and its CRC. */
 static inline size_t ini_profile_length(const uint8_t *data, size_t length) {
     size_t at=0;

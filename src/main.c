@@ -29,6 +29,9 @@
 #ifndef PROFILE
 #define PROFILE 1
 #endif
+#ifndef FULLSCREEN_PASSIVE_DIAGNOSTICS
+#define FULLSCREEN_PASSIVE_DIAGNOSTICS 0
+#endif
 #define FULLSCREEN_HYBRID 1
 #define FULLSCREEN_FAST 1
 #include "diagnostics.h"
@@ -121,6 +124,7 @@ static int load_source(struct source *source, int card_host) {
     DIAG_STEP("hermes.semantic_plan");
     DIAG_EVENT("%s HBC version=%u length=%zu",source->title,u32(source->data+8),source->length);
     printf("%s: HBC v%u length=%zu\n",source->title,u32(source->data+8),source->length);
+    DIAG_SPAN(source->title,source->data,128);
     if (hbc_make_plan(source->data,source->length,card_host,&source->plan,error,sizeof(error))) {
         DIAG_ERROR("hermes.semantic_plan",0,"%s: %s",source->title,error);
         printf("Semantic discovery refused %s: %s\n",source->title,error); return -1;
@@ -150,8 +154,21 @@ static int find_shellui(void) {
 }
 #include "fullscreen_fixed_locator.h"
 #include "fullscreen_fast_locator.h"
+static void observe_shellui(const char *phase,int previous);
+static int hybrid_refresh_shellui(int *target_pid);
+#define HYBRID_OBSERVE_SHELLUI observe_shellui
 #include "browser_bootstrap.h"
 #include "fullscreen_hybrid.h"
+#if FULLSCREEN_PASSIVE_DIAGNOSTICS
+_Static_assert(LOCATE_ONLY && FULLSCREEN_MAPS_ONLY && !HYBRID_AUTO_BROWSER && !TEST_HERMES_EXPORT,
+               "Passive diagnosis cannot patch, bootstrap, bulk-scan or export SELF");
+#endif
+#if FULLSCREEN_SAFE_SCAN && TEST_HERMES_EXPORT
+#include "../payloads/direct_hermes_export.h"
+#endif
+#if TEST_HBC_EXPORT
+#include "hbc_candidate_console.h"
+#endif
 static int trace_request(int request, int pid, void *address, int data) {
     pid_t self=getpid();
     uint64_t auth=kernel_get_ucred_authid(self);
@@ -169,14 +186,21 @@ static int trace_request(int request, int pid, void *address, int data) {
 static int trace(int request, int pid) { return trace_request(request,pid,NULL,0); }
 #include "jsc_fullscreen.h"
 #include "browser_engine.h"
+#include "shellui_lifecycle.h"
+#include "related_processes.h"
 int main(void) {
     setvbuf(stdout,NULL,_IONBF,0);
     START_TIMER(total_started);
     diag_begin(kernel_get_fw_version(),LOCATE_ONLY?"inspect":RESTORE?"restore":"apply");
+    DIAG_EVENT("Payload build=%s diagnostics=2 cache=%u",DIAG_BUILD,HYBRID_CACHE_VERSION);
+    printf("Payload build=%s diagnostics=2 cache=%u\n",DIAG_BUILD,HYBRID_CACHE_VERSION);
     DIAG_STEP("shellui.find");
     struct source sources[2]={{.title="NPXS40036"},{.title="NPXS40003"}};
     uint8_t previous[2][HBC_PATCH_MAX][HBC_PATCH_BYTES], check[128];
     int pid=find_shellui(), attached=0, result=1, engine=0;
+#if FULLSCREEN_SAFE_SCAN && TEST_HERMES_EXPORT
+    int test_export_result=0;
+#endif
     diagnostic.pid=pid>0?(uint32_t)pid:0;
     DIAG_EVENT("ShellUI PID=%d",pid);
     const char *failure="ShellUI not found";
@@ -193,9 +217,9 @@ int main(void) {
         REPORT_TIMER("jsc_prepare_transaction",jsc_started);
         goto finish;
     }
-    failure="browser discovery or validation error";
+    failure=FULLSCREEN_PASSIVE_DIAGNOSTICS?"Diagnostic collection; no fullscreen operation attempted":"browser discovery or validation error";
     START_TIMER(prepare_started);
-    if(hybrid_prepare(pid,sources,&attached))goto finish;
+    if(hybrid_prepare(&pid,sources,&attached))goto finish;
     REPORT_TIMER("prepare",prepare_started);
     if (LOCATE_ONLY) {
         puts("Discovery complete; no RAM writes; INI may be refreshed");
@@ -266,15 +290,54 @@ finish:
     if(!result && !attached && (engine==BROWSER_JSC?jsc_commit():hybrid_commit())) {
         result=2; DIAG_ERROR("cache.save",errno,"RAM operation succeeded but INI save failed");
     }
+#if TEST_HBC_EXPORT
+    if(result==1 && !attached && engine==BROWSER_HERMES &&
+       !strcmp(diagnostic.stage,"hermes.targets_unlocated"))hbc_candidate_export(pid);
+#endif
+#if FULLSCREEN_SAFE_SCAN && TEST_HERMES_EXPORT
+    if(!attached && engine==BROWSER_HERMES && hybrid_safe_used) {
+        START_TIMER(export_started);
+        /* Optional evidence only; export failure cannot change RAM results or
+         * the primary failure stage. Never contact ftpsrv while attached. */
+        test_export_result=direct_hermes_export(HERMES_LIBRARY_PATH,"/data/libhermes-0.11.decrypted.sprx");
+        REPORT_TIMER("hermes_export",export_started);
+    }
+#endif
     if(!attached) {
         if(result) {
+            if(engine==BROWSER_HERMES)observe_shellui("operation_failure",pid);
+            observe_related_processes(pid);
             diagnostic.result=(uint32_t)result;
             diag_text(diagnostic.summary,sizeof(diagnostic.summary),result==2?"INI save failed after successful operation":failure);
             diag_text(diagnostic.cache,sizeof(diagnostic.cache),engine==BROWSER_JSC?jsc_cache_status:hybrid_cache_status);
             if(!diagnostic.reason[0])diag_error(diagnostic.stage,0,"%s",diagnostic.summary);
+            diag_print(&diagnostic);
             if(diag_publish(HYBRID_CACHE_PATH))perror("Cannot save failure diagnostics");
             else printf("Failure diagnostics saved: %s\n",HYBRID_CACHE_PATH);
-        } else if(diag_clear(HYBRID_CACHE_PATH)) {
+        }
+#if TEST_HBC_LIVE_PLAN
+        else if(hybrid_live_verified) {
+            diagnostic.result=0;
+            diag_text(diagnostic.stage,sizeof(diagnostic.stage),"test.hermes_live_plan");
+            diag_text(diagnostic.reason,sizeof(diagnostic.reason),"Live semantic plan verified; associated module text retained for review");
+            diag_text(diagnostic.summary,sizeof(diagnostic.summary),"Test operation succeeded; console fullscreen behavior requires observation");
+            diag_text(diagnostic.cache,sizeof(diagnostic.cache),hybrid_cache_status);
+            if(diag_publish(HYBRID_CACHE_PATH)) { result=2; perror("Cannot save live-plan evidence"); }
+        }
+#endif
+#if FULLSCREEN_SAFE_SCAN && TEST_HERMES_EXPORT
+        else if(test_export_result) {
+            diagnostic.result=0;
+            diag_text(diagnostic.stage,sizeof(diagnostic.stage),"test.hermes_export");
+            diag_text(diagnostic.reason,sizeof(diagnostic.reason),"Browser operation succeeded; optional export failed or is unverified");
+            diag_text(diagnostic.summary,sizeof(diagnostic.summary),"See export events and hashes; reusable profile remains valid");
+            diag_text(diagnostic.cache,sizeof(diagnostic.cache),hybrid_cache_status);
+            if(diag_publish(HYBRID_CACHE_PATH)) {
+                result=2; perror("Cannot save test export diagnostics");
+            } else puts("Optional export diagnostics saved with the reusable INI");
+        }
+#endif
+        else if(diag_clear(HYBRID_CACHE_PATH)) {
             result=2; DIAG_ERROR("diagnostics.clear",errno,"Operation succeeded but previous failure diagnostics could not be cleared");
             perror("Cannot clear previous failure diagnostics");
         }
@@ -282,7 +345,7 @@ finish:
     for (unsigned i=0;i<2;i++) free(sources[i].allocation);
     REPORT_TIMER("total_payload",total_started);
     printf("Result=%d; RAM patch only; /data INI=%s\n",result,engine==BROWSER_JSC?jsc_cache_status:hybrid_cache_status);
-    notify_result(result,RESTORE,LOCATE_ONLY,failure);
+    if(!FULLSCREEN_PASSIVE_DIAGNOSTICS)notify_result(result,RESTORE,LOCATE_ONLY,failure);
     return result;
 }
 

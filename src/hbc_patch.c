@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
+#if TEST_HBC_LIVE_PLAN || HBC_ENABLE_DIAGNOSTICS
+#include <stdarg.h>
+#endif
 
 struct view {
     const uint8_t *data;
@@ -266,4 +269,114 @@ int hbc_make_plan(const uint8_t *data, size_t len, int card_host,
         return fail(error,error_size,"Unsupported browser header function structure");
     return 0;
 }
+
+#if TEST_HBC_LIVE_PLAN || HBC_ENABLE_DIAGNOSTICS
+struct hbc_evidence {
+    void (*emit)(void *,const char *); void *context;
+    unsigned lines,omitted,functions; uint32_t seen[8];
+};
+static void evidence_line(struct hbc_evidence *e,const char *format,...) {
+    if(e->lines>=59) { e->omitted++; return; }
+    char line[192]; va_list args; va_start(args,format);
+    vsnprintf(line,sizeof(line),format,args); va_end(args);
+    for(char *p=line;*p;p++)if((unsigned char)*p<32 || (unsigned char)*p>126)*p='?';
+    e->emit(e->context,line); e->lines++;
+}
+static void evidence_hex(struct hbc_evidence *e,const char *label,uint32_t offset,const uint8_t *p,size_t n) {
+    char hex[129]; if(n>64)n=64;
+    for(size_t i=0;i<n;i++)snprintf(hex+2*i,3,"%02x",p[i]);
+    hex[2*n]=0;
+    evidence_line(e,"%s HBC+%x=%s",label,offset,hex);
+}
+static uint32_t evidence_sid(struct hbc_evidence *e,const struct view *v,const char *name) {
+    uint32_t first=UINT32_MAX,count=0;
+    for(uint32_t i=0;i<v->strings;i++)if(string_equal(v,i,name)) { if(!count)first=i; count++; }
+    evidence_line(e,"anchor text=%s count=%u first_sid=%u",name,count,first);
+    return count==1?first:UINT32_MAX;
+}
+static void evidence_function(struct hbc_evidence *e,const struct view *v,uint32_t id,const char *role) {
+    if(id==UINT32_MAX)return;
+    for(unsigned i=0;i<e->functions;i++)if(e->seen[i]==id)return;
+    if(e->functions==8) { e->omitted++; return; }
+    e->seen[e->functions++]=id;
+    struct function f;
+    if(function(v,id,&f)) { evidence_line(e,"function role=%s id=%u invalid_descriptor",role,id); return; }
+    evidence_line(e,"function role=%s id=%u offset=%x size=%u frame=%u flags=%02x",role,id,f.offset,f.size,f.frame,f.flags);
+    evidence_hex(e,"descriptor",128+id*16,v->data+128+(size_t)id*16,16);
+    size_t n=f.size<96?f.size:96;
+    for(size_t at=0;at<n;at+=64)evidence_hex(e,"code",f.offset+(uint32_t)at,v->data+f.offset+at,n-at<64?n-at:64);
+    /* Unknown/truncated opcodes are evidence even when they prevent refs(). */
+    for(uint32_t at=0;at<f.size;) {
+        unsigned size=hbc_sizes[v->data[f.offset+at]];
+        if(!size || size>f.size-at) {
+            evidence_line(e,"decode_stop function=%u relative=%x opcode=%02x",id,at,v->data[f.offset+at]);
+            evidence_hex(e,"fault",f.offset+at,v->data+f.offset+at,f.size-at<32?f.size-at:32); break;
+        }
+        at+=size;
+    }
+}
+static uint32_t evidence_role(struct hbc_evidence *e,const struct view *v,const char *role,const uint32_t ids[3]) {
+    unsigned count=0,partial=0,invalid=0; uint32_t first=UINT32_MAX,near=UINT32_MAX,bad=UINT32_MAX;
+    for(uint32_t i=0;i<v->functions;i++) {
+        struct function f; if(function(v,i,&f))continue;
+        unsigned mask=0,decoded=1;
+        for(uint32_t at=0;at<f.size;) {
+            const uint8_t *p=v->data+f.offset+at; unsigned n=hbc_sizes[*p];
+            if(!n || n>f.size-at) { decoded=0; invalid++; if(bad==UINT32_MAX)bad=i; break; }
+            uint32_t sid=string_ref(p);
+            for(unsigned k=0;k<3;k++)if(ids[k]!=UINT32_MAX && sid==ids[k])mask|=1U<<k;
+            at+=n;
+        }
+        if(mask==7 && decoded) { if(!count)first=i; count++; }
+        else if(mask) { if(!partial)near=i; partial++; }
+    }
+    evidence_line(e,"role=%s full=%u partial=%u decode_invalid=%u",role,count,partial,invalid);
+    evidence_function(e,v,first,role);
+    if(!count)evidence_function(e,v,near,"partial-anchor-match");
+    if(!count)evidence_function(e,v,bad,"invalid-opcode-sample");
+    return count==1?first:UINT32_MAX;
+}
+void hbc_plan_failure_evidence(const uint8_t *data,size_t length,int card_host,
+                               void (*emit)(void *,const char *),void *context) {
+    if(!emit)return;
+    struct hbc_evidence e={.emit=emit,.context=context}; struct view v;
+    evidence_line(&e,"HBC recipe evidence: role=%s length=%zu max_lines=60 max_functions=8",card_host?"action-card":"control-center",length);
+    if(init(&v,data,length)) {
+        evidence_line(&e,"HBC table/format validation failed");
+        if(data && length)evidence_hex(&e,"header",0,data,length<64?length:64);
+    } else {
+        evidence_line(&e,"HBC tables functions=%u strings=%u string_table=%x storage=%x bytes=%u",v.functions,v.strings,v.string_table,v.storage,v.storage_size);
+        const char *dimensions[2]={"height","width"};
+        for(unsigned d=0;d<2;d++) {
+            char a[96],b[96],c[96];
+            snprintf(a,sizeof(a),"AC SDK: requested AC selected %s of \"",dimensions[d]);
+            snprintf(b,sizeof(b),"\", clamping to min %s of \"",dimensions[d]);
+            snprintf(c,sizeof(c),"\", clamping to max %s of \"",dimensions[d]);
+            uint32_t ids[3]={evidence_sid(&e,&v,a),evidence_sid(&e,&v,b),evidence_sid(&e,&v,c)};
+            evidence_role(&e,&v,dimensions[d],ids);
+        }
+        if(card_host) {
+            const char *names[6]={"WebBrowserActionCard","WebViewPS","cursorEnabled","hideHeader","initialUserAgent","webviewProps"};
+            uint32_t ids[6]; for(unsigned i=0;i<6;i++)ids[i]=evidence_sid(&e,&v,names[i]);
+            uint32_t render=evidence_role(&e,&v,"browser-render",ids),ctor=evidence_role(&e,&v,"browser-constructor",ids+3);
+            uint32_t header_sid=evidence_sid(&e,&v,"renderHeader"),mount_sid=evidence_sid(&e,&v,"componentDidMount"),render_sid=evidence_sid(&e,&v,"render");
+            const char *init_names[4]={"initializeSettings","checkParentalControls","getConfig","resize"};
+            for(unsigned i=0;i<4;i++)evidence_sid(&e,&v,init_names[i]);
+            struct function f;
+            if(ctor!=UINT32_MAX && header_sid!=UINT32_MAX && !function(&v,ctor,&f))
+                evidence_function(&e,&v,method(&v,&f,header_sid),"browser-header");
+            unsigned factories=0; uint32_t first=UINT32_MAX,mount=UINT32_MAX;
+            if(ctor!=UINT32_MAX && render!=UINT32_MAX && mount_sid!=UINT32_MAX && render_sid!=UINT32_MAX)
+                for(uint32_t i=0;i<v.functions;i++)if(!function(&v,i,&f) && contains_closure(&v,&f,ctor) && method(&v,&f,render_sid)==render) {
+                    uint32_t candidate=method(&v,&f,mount_sid);
+                    if(candidate!=UINT32_MAX) { if(!factories) { first=i; mount=candidate; } factories++; }
+                }
+            evidence_line(&e,"browser_factory matches=%u first=%u mount=%u",factories,first,mount);
+            evidence_function(&e,&v,mount,"browser-mount");
+        }
+    }
+    char summary[128]; snprintf(summary,sizeof(summary),"HBC evidence end: lines=%u functions=%u omitted=%u patch_authority=no",e.lines+1,e.functions,e.omitted);
+    emit(context,summary);
+}
+#endif
 

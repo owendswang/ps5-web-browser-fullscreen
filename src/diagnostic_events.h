@@ -8,5 +8,6 @@
 #define DIAG_ERROR(...) ((void)0)
 #define DIAG_ENGINE(...) ((void)0)
 #define DIAG_BYTES(...) ((void)0)
+#define DIAG_SPAN(...) ((void)0)
 #endif
 #endif

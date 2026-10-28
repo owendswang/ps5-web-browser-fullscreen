@@ -22,5 +22,11 @@ struct hbc_plan {
  * the same selected-size helper evidence used for the control-center bundle. */
 int hbc_make_plan(const uint8_t *data, size_t len, int card_host,
                   struct hbc_plan *plan, char *error, size_t error_size);
+#if TEST_HBC_LIVE_PLAN || HBC_ENABLE_DIAGNOSTICS
+/* Failure-only, read-only description: at most 60 ASCII lines, 191 bytes each.
+ * Callback receives bounded evidence, never a replacement patch plan. */
+void hbc_plan_failure_evidence(const uint8_t *data,size_t length,int card_host,
+                               void (*emit)(void *,const char *),void *context);
+#endif
 #endif
 

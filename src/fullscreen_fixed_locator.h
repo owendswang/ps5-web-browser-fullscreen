@@ -49,6 +49,7 @@ static int locate_sources(int pid, struct source *sources, size_t count) {
         fixed_read(pid,registry,root,sizeof(root)) || root[2]==0 || root[2]>128 ||
         fixed_read(pid,root[1],head,sizeof(head))) return -1;
     uintptr_t node=head[0], previous=root[1];
+    size_t shape[2]={0}; uint8_t near_header[2][128]; unsigned sampled[2]={0};
     size_t modules=0, cache_hits=0;
     struct { uintptr_t address; uint8_t header[128]; } cache[32];
     unsigned cache_used=0;
@@ -99,7 +100,14 @@ static int locate_sources(int pid, struct source *sources, size_t count) {
             if(FIXED_BATCH && !cached && cache_used<sizeof(cache)/sizeof(cache[0])) {
                 cache[cache_used].address=buffer; memcpy(cache[cache_used].header,header,sizeof(header)); cache_used++;
             }
-            for (size_t s=0;s<count;s++) if (!memcmp(header,sources[s].data,sizeof(header))) {
+            for (size_t s=0;s<count;s++) {
+                if(!memcmp(header+8,sources[s].data+8,4) && !memcmp(header+32,sources[s].data+32,4)) {
+                    shape[s]++;
+                    if(!sampled[s] && memcmp(header,sources[s].data,128)) {
+                        memcpy(near_header[s],header,128); sampled[s]=1;
+                    }
+                }
+                if(memcmp(header,sources[s].data,sizeof(header)))continue;
                 if (sources[s].base && sources[s].base!=buffer) {
                     puts("Multiple matching live fixed HBC images; no writes"); return -1;
                 }
@@ -116,6 +124,8 @@ static int locate_sources(int pid, struct source *sources, size_t count) {
            (unsigned long)root[2],modules,fixed_read_bytes,fixed_read_calls);
     printf("Fixed reads: %s; reused %zu shared HBC headers in this invocation\n",FIXED_BATCH?"batched":"scalar baseline",cache_hits);
     for (size_t s=0;s<count;s++) if (!sources[s].base) {
+        DIAG_EVENT("Fixed graph target %s missing: runtimes=%lu modules=%zu expected_length=%zu same_shape=%zu",sources[s].title,(unsigned long)root[2],modules,sources[s].length,shape[s]);
+        if(sampled[s])DIAG_SPAN("fixed_same_shape_header",near_header[s],128);
         printf("Expected %s HBC identity is not registered; full graph checked, no foreground filter\n",sources[s].title);
         return FIXED_TARGET_MISSING;
     }
