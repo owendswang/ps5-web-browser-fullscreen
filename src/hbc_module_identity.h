@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* 10.01 collector 0x2ac0 and copy helper 0x1aa0 establish these associated
- * string fields. Their semantic labels are not proven names or source URLs. */
+/* Associated strings require a verified native fingerprint and layout.
+ * Their semantic labels are not proven names or source URLs. */
 #ifndef HBC_MODULE_IDENTITY_H
 #define HBC_MODULE_IDENTITY_H
 #include "hbc_candidate_export.h"
@@ -40,25 +40,26 @@ static inline const char *hmi_string(struct hmi_context *c,uintptr_t wrapper,str
     out->text[n]=0;
     return length?"ok":"empty";
 }
-static inline unsigned hmi_profile(uint32_t fw,uintptr_t collector_rva,const uint8_t *code) {
+static inline unsigned hmi_profile(uintptr_t collector_rva,const uint8_t *code) {
     static const uint8_t fingerprint[32]={0x55,0x48,0x89,0xe5,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x81,0xec,
         0x08,0x03,0x00,0x00,0x48,0x8b,0x05,0x55,0xa3,0x27,0x00,0x48,0x89,0xbd,0x50,0xfd};
-    return fw==0x10010000 && collector_rva==0x2ac0 && !memcmp(code,fingerprint,32);
+    return collector_rva==0x2ac0 && !memcmp(code,fingerprint,32);
 }
 static void hmi_observe(void *context,uintptr_t runtime,uintptr_t module,uintptr_t provider,uintptr_t buffer,const uint8_t *header) {
     struct hmi_context *c=context;
-    if(!c->enabled || (!hbc_dump_match(header,0) && !hbc_dump_match(header,1)))return;
+    if(!hbc_candidate_header(header) || hbc_candidate_length(header)<1024*1024)return;
     for(unsigned i=0;i<hmi_budget.used;i++)if(hmi_budget.seen[i].pid==c->pid &&
         hmi_budget.seen[i].module==module && hmi_budget.seen[i].buffer==buffer)return;
     if(hmi_budget.used==4)return;
     unsigned at=hmi_budget.used++;
     hmi_budget.seen[at].pid=c->pid; hmi_budget.seen[at].module=module; hmi_budget.seen[at].buffer=buffer;
-    if(c->layout->modules!=0x2450 || c->layout->runtime!=0x10 || c->layout->provider!=0x60 ||
+    DIAG_EVENT("HBC association base=%lx module=%lx runtime=%lx provider=%lx",buffer,module,runtime,provider);
+    if(!c->enabled || c->layout->modules!=0x2450 || c->layout->runtime!=0x10 || c->layout->provider!=0x60 ||
        c->layout->raw.object!=0x120 || c->layout->raw.data!=0x130 || c->layout->raw.size!=0x10) {
-        DIAG_EVENT("HBC association base=%lx unavailable: native layout mismatch",buffer); return;
+        DIAG_EVENT("HBC associated strings unavailable: native fingerprint/layout unsupported"); return;
     }
     int saved_errno=errno;
-    DIAG_EVENT("HBC association base=%lx module=%lx runtime=%lx provider=%lx layout=10.01 labels_unverified=yes",buffer,module,runtime,provider);
+    DIAG_EVENT("HBC associated string layout fingerprint verified; labels_unverified=yes");
     const uintptr_t wrappers[2]={module+0x80,runtime+0x460};
     const char *labels[2]={"module_text","runtime_text"};
     for(unsigned i=0;i<2;i++) {

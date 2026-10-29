@@ -28,6 +28,9 @@ struct ha_reader {
     /* Optional diagnostic metadata; never consulted by target validation. */
     void (*observe_module)(void *,uintptr_t,uintptr_t,uintptr_t,uintptr_t,const uint8_t *);
     void *module_context;
+    /* Opt in only while the target is stopped; reset at every graph walk. */
+    unsigned cache_headers,header_count,header_hits;
+    struct { uintptr_t base; uint8_t bytes[128]; } headers[32];
 };
 struct ha_layout {
     uintptr_t registry_slot, vtable;
@@ -169,14 +172,24 @@ static inline int ha_buffer(struct ha_reader *r, uintptr_t provider, const struc
     uintptr_t object=0; uint8_t contents[64];
     if(ha_read(r,provider+raw->data,buffer,8) || !ha_pointer(*buffer) ||
        ha_read(r,provider+raw->object,&object,8) || !ha_pointer(object) ||
-       ha_read(r,object,contents,sizeof(contents)) || ha_read(r,*buffer,header,128))return HA_UNSUPPORTED;
+       ha_read(r,object,contents,sizeof(contents)))return HA_UNSUPPORTED;
+    unsigned cached=0;
+    if(r->cache_headers)for(unsigned i=0;i<r->header_count;i++)if(r->headers[i].base==*buffer) {
+        memcpy(header,r->headers[i].bytes,128); r->header_hits++; cached=1; break;
+    }
+    if(!cached && ha_read(r,*buffer,header,128))return HA_UNSUPPORTED;
     static const uint8_t magic[]={0xc6,0x1f,0xbc,3,0xc1,3,0x19,0x1f};
     uint64_t length=ha_u64(contents+raw->size);
     uint32_t file_length=ha_u32(header+32);
     unsigned data_links=0;
     for(unsigned i=0;i<sizeof(contents);i+=8)if(ha_u64(contents+i)==*buffer)data_links++;
-    return !memcmp(header,magic,8) && file_length>=128 && file_length<=32U*1024*1024 &&
-           length>=file_length && length<=32U*1024*1024 && data_links>=1?HA_OK:HA_UNSUPPORTED;
+    if(memcmp(header,magic,8) || file_length<128 || file_length>32U*1024*1024 ||
+       length<file_length || length>32U*1024*1024 || !data_links)return HA_UNSUPPORTED;
+    if(r->cache_headers && !cached && r->header_count<32) {
+        unsigned at=r->header_count++;
+        r->headers[at].base=*buffer; memcpy(r->headers[at].bytes,header,128);
+    }
+    return HA_OK;
 }
 static inline int ha_provider_layout(struct ha_reader *r, const uint8_t module[HA_MODULE_BYTES],
                                       struct ha_layout *layout) {
@@ -206,6 +219,7 @@ static inline int ha_provider_layout(struct ha_reader *r, const uint8_t module[H
     return matches==1?HA_OK:matches?HA_AMBIGUOUS:HA_UNSUPPORTED;
 }
 static inline int ha_walk(struct ha_reader *r, struct ha_layout *layout, struct ha_target *targets, size_t count) {
+    r->header_count=r->header_hits=0;
     uintptr_t registry=0, root[3], head[2];
     r->walk_stage="registry root";
     if(ha_read(r,layout->registry_slot,&registry,8) || !ha_pointer(registry) ||

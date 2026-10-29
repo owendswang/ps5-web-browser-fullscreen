@@ -75,9 +75,14 @@ static const struct hybrid_cache reference_profiles[]={
       }}},
     }}},
 };
-static inline const struct hybrid_cache *reference_for_firmware(uint32_t firmware) {
+static inline const struct hybrid_cache *reference_next_for_firmware(uint32_t firmware,const struct hybrid_cache *previous) {
+    int ready=previous==NULL;
     for(size_t i=0;i<sizeof(reference_profiles)/sizeof(reference_profiles[0]);i++)
-        if(reference_profiles[i].firmware==firmware)return &reference_profiles[i];
+        if(&reference_profiles[i]==previous)ready=1;
+        else if(ready && reference_profiles[i].firmware==firmware)return &reference_profiles[i];
     return NULL;
+}
+static inline const struct hybrid_cache *reference_for_firmware(uint32_t firmware) {
+    return reference_next_for_firmware(firmware,NULL);
 }
 #endif

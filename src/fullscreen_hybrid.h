@@ -5,6 +5,10 @@
 #include "diagnostic_events.h"
 #ifndef HYBRID_REFERENCE_LOOKUP
 #define HYBRID_REFERENCE_LOOKUP reference_for_firmware
+#define HYBRID_REFERENCE_NEXT reference_next_for_firmware
+#endif
+#ifndef HYBRID_REFERENCE_NEXT
+#define HYBRID_REFERENCE_NEXT(firmware,previous) NULL
 #endif
 #ifndef HYBRID_AUTO_BROWSER
 #define HYBRID_AUTO_BROWSER 1
@@ -100,7 +104,7 @@ static int hybrid_prepare_once(int pid, struct source *sources, int *attached, i
     if(!firmware) { DIAG_ERROR("hermes.firmware",0,"Current firmware is unavailable"); puts("Hybrid refused: current firmware is unavailable"); return -1; }
     const struct hybrid_cache *reference=HYBRID_REFERENCE_LOOKUP(firmware);
     int reference_result=1;
-    if(reference) {
+    while(reference) {
         DIAG_STEP("hermes.reference"); DIAG_EVENT("Trying exact-firmware Hermes reference %08x",firmware);
         printf("Trying built-in reference for exact firmware %08x\n",firmware);
         reference_result=hybrid_try_profile(pid,sources,attached,reference);
@@ -111,10 +115,14 @@ static int hybrid_prepare_once(int pid, struct source *sources, int *attached, i
             puts("Plan source: built-in reference; INI cache not needed");
             REPORT_TIMER("reference_hit",cache_started); return 0;
         }
-        puts("Built-in reference rejected; continuing with INI and dynamic discovery");
+        puts("Built-in reference rejected; checking remaining references before INI and dynamic discovery");
         if(hybrid_release(pid,attached))return -1;
         hybrid_clear_sources(sources);
-    } else { DIAG_EVENT("No built-in Hermes reference for %08x",firmware); printf("No built-in reference for exact firmware %08x\n",firmware); }
+        const struct hybrid_cache *next=HYBRID_REFERENCE_NEXT(firmware,reference);
+        if(!next)break;
+        reference=next;
+    }
+    if(!reference) { DIAG_EVENT("No built-in Hermes reference for %08x",firmware); printf("No built-in reference for exact firmware %08x\n",firmware); }
     int cache_result=hc_load(HYBRID_CACHE_PATH,firmware,&hybrid_disk_record);
     DIAG_EVENT("Hermes INI: %s",hc_load_reason(cache_result));
     if(cache_result==HC_CONTENT_REJECTED)hybrid_note_rejected_ini();
@@ -220,6 +228,12 @@ static int hybrid_prepare(int *target_pid, struct source *sources, int *attached
     hybrid_safe_used=0;
 #endif
     int result=hybrid_prepare_once(pid,sources,attached,1);
+#if TEST_HBC_LIVE_PLAN
+    if(result==HA_MISSING) {
+        int live=hybrid_live_prepare(pid,sources,attached);
+        if(live<=0)return live;
+    }
+#endif
 #if FULLSCREEN_SAFE_SCAN && FULLSCREEN_MAPS_ONLY
     if(!result || result==HA_MISSING || result==HA_UNSUPPORTED)
         return hybrid_safe_prepare(pid,sources,attached);

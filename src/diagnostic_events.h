@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #ifndef WEB_BROWSER_DIAGNOSTIC_EVENTS_H
 #define WEB_BROWSER_DIAGNOSTIC_EVENTS_H
+#ifndef DIAG_DEEP
+#define DIAG_DEEP 1
+#endif
 /* Host mocks and historical code can compile without a report collector. */
 #ifndef DIAG_STEP
 #define DIAG_STEP(...) ((void)0)

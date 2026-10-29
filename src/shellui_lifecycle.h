@@ -24,7 +24,7 @@ static void observe_shellui(const char *phase,int previous) {
     int saved=errno; struct shellui_state s=shellui_state_read();
     DIAG_EVENT("ShellUI state phase=%s previous=%d observed=%d pid_changed=%u",phase,previous,s.pid,s.pid>0 && s.pid!=previous);
     DIAG_EVENT("ShellUI readiness pid=%d vm_ret=%d vm_errno=%d vm_bytes=%zu Hermes=%u JSC=%u base=%lx",s.pid,s.vm_result,s.vm_error,s.vm_bytes,s.hermes,s.jsc,s.base);
-#if FULLSCREEN_SAFE_SCAN && !FULLSCREEN_PASSIVE_DIAGNOSTICS
+#if DIAG_DEEP && FULLSCREEN_SAFE_SCAN && !FULLSCREEN_PASSIVE_DIAGNOSTICS
     if((!strcmp(phase,"after_open") || !strcmp(phase,"after_home")) && s.pid>0 && s.hermes && s.base)
         anchor_phase_snapshot(phase,s.pid,s.base);
 #endif

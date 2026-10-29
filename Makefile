@@ -5,7 +5,13 @@ ifneq ($(strip $(SDK_GOALS)),)
 include $(PS5_PAYLOAD_SDK)/toolchain/prospero.mk
 endif
 
-CFLAGS := -Wall -Wextra -O2 -g -DEXPORT_FIXED_PROFILE=0
+FULLSCREEN_DEBUG ?= 1
+DEEP_DIAGNOSTICS ?= 1
+CFLAGS := -Wall -Wextra -O2 -DEXPORT_FIXED_PROFILE=0
+ifeq ($(FULLSCREEN_DEBUG),1)
+CFLAGS += -g
+endif
+DIAG_FLAGS := -DDIAG_DEEP=$(DEEP_DIAGNOSTICS)
 HOST_CC ?= cc
 HEADERS := $(wildcard src/*.h)
 SOURCES := src/main.c src/hbc_patch.c
@@ -17,25 +23,25 @@ TEST_ELFS := web-browser-fullscreen-test.elf web-browser-restore-test.elf web-br
 all: web-browser-fullscreen.elf web-browser-restore.elf
 
 web-browser-fullscreen.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) -o $@ $(SOURCES) $(LIBS)
 
 web-browser-restore.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
 
 inspect: web-browser-inspect.elf
 web-browser-inspect.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) -DLOCATE_ONLY=1 -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) -DLOCATE_ONLY=1 -o $@ $(SOURCES) $(LIBS)
 
 test: $(TEST_ELFS)
 
 web-browser-fullscreen-test.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(TEST_FLAGS) -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(TEST_FLAGS) -o $@ $(SOURCES) $(LIBS)
 
 web-browser-restore-test.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(TEST_FLAGS) -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(TEST_FLAGS) -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
 
 web-browser-inspect-test.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(TEST_FLAGS) -DLOCATE_ONLY=1 -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(TEST_FLAGS) -DLOCATE_ONLY=1 -o $@ $(SOURCES) $(LIBS)
 
 profile-tool: src/profile_tool.c $(HEADERS)
 	$(HOST_CC) -std=c11 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror -O2 -Isrc src/profile_tool.c -o profile-tool

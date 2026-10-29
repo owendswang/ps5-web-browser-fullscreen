@@ -7,7 +7,7 @@
 #if TEST_HBC_LIVE_PLAN || TEST_HBC_EXPORT
 #include "hbc_candidate_export.h"
 #endif
-#if TEST_HBC_LIVE_PLAN
+#if TEST_HBC_LIVE_PLAN && DIAG_DEEP
 #include "hbc_module_identity.h"
 #endif
 #ifndef FULLSCREEN_SAFE_SCAN
@@ -121,6 +121,7 @@ static struct {
     uint8_t headers[2][128];
 } anchor_last_graph;
 struct anchor_probe_budget { int pid; size_t calls,bytes; unsigned exhausted; };
+#if DIAG_DEEP
 static struct {
     int valid,pid;
     uintptr_t image,bases[2];
@@ -161,6 +162,7 @@ static inline void anchor_phase_snapshot(const char *phase,int pid,uintptr_t ima
     (void)result;
     errno=saved_errno;
 }
+#endif
 static void anchor_report_code(unsigned index,const char *label,const uint8_t *code) {
     static uint8_t previous[2][HA_CODE_BYTES]; static unsigned valid;
     if((valid&(1U<<index)) && !memcmp(previous[index],code,HA_CODE_BYTES)) {
@@ -192,7 +194,9 @@ static int locate_sources_fast(int pid, struct source *sources, size_t count, in
 #endif
     scan_native_reset(pid);
     anchor_last_graph.valid=0;
+#if DIAG_DEEP
     anchor_open_graph.valid=0;
+#endif
     DIAG_STEP("hermes.native_anchor");
     uint32_t handle=0;
     struct ha_reader reader={.context=&pid,.read=anchor_copy};
@@ -228,14 +232,20 @@ static int locate_sources_fast(int pid, struct source *sources, size_t count, in
         int modules_read=modules_in_image?ha_read(&reader,modules,module_code,sizeof(module_code)):HA_UNSUPPORTED;
         if(collector_in_image && modules_in_image)anchor_stage="getter read";
         DIAG_EVENT("Hermes getter reads: collector=%d modules=%d",collector_read,modules_read);
-        if(!collector_read)anchor_report_code(0,"collector_code",collector_code);
-        if(!modules_read)anchor_report_code(1,"modules_code",module_code);
+        if(DIAG_DEEP || collector_read || modules_read) {
+            if(!collector_read)anchor_report_code(0,"collector_code",collector_code);
+            if(!modules_read)anchor_report_code(1,"modules_code",module_code);
+        }
         if(!collector_read && !modules_read) {
             anchor_stage="registry pattern";
             ret=ha_registry_anchor(collector_code,sizeof(collector_code),collector,&reader,&layout.registry_slot);
             if(!ret) { anchor_stage="module-list pattern"; ret=ha_modules_anchor(module_code,sizeof(module_code),&layout.modules); }
             DIAG_EVENT("Hermes anchor parse: stage=%s result=%d registry_rva=%lx module_list=%x",anchor_stage,ret,
                        layout.registry_slot?layout.registry_slot-reader.image_base:0UL,layout.modules);
+            if(ret) {
+                anchor_report_code(0,"collector_code",collector_code);
+                anchor_report_code(1,"modules_code",module_code);
+            }
             if(ret==HA_AMBIGUOUS) { DIAG_ERROR("hermes.native_anchor",0,"Ambiguous native anchors"); puts("Ambiguous native anchors; no writes"); return -1; }
             if(!ret) {
                 printf("Hermes native anchors: registry slot=%lx module-list=+%x\n",layout.registry_slot,layout.modules);
@@ -243,16 +253,21 @@ static int locate_sources_fast(int pid, struct source *sources, size_t count, in
                 *attached=1;
                 int status=0;
                 if(waitpid(pid,&status,0)!=pid || !WIFSTOPPED(status)) { DIAG_ERROR("hermes.native_stop",errno,"Cannot confirm ShellUI stop for native walk"); perror("waitpid"); return -1; }
+                reader.cache_headers=1;
                 for(unsigned i=0;i<2;i++)targets[i]=(struct ha_target){.header=sources[i].data};
                 anchor_stage="object walk";
                 struct anchor_hbc_samples samples={.sources=sources};
                 reader.observe_hbc=anchor_sample_hbc; reader.observe_context=&samples;
-#if TEST_HBC_LIVE_PLAN
+#if TEST_HBC_LIVE_PLAN && DIAG_DEEP
                 struct hmi_context identity={.reader=&reader,.layout=&layout,.pid=pid,
-                    .enabled=hmi_profile(kernel_get_fw_version(),collector-reader.image_base,collector_code)};
+                    .enabled=hmi_profile(collector-reader.image_base,collector_code)};
                 reader.observe_module=hmi_observe; reader.module_context=&identity;
 #endif
                 ret=ha_walk(&reader,&layout,targets,2);
+                if(ret && ret!=HA_MISSING) {
+                    anchor_report_code(0,"collector_code",collector_code);
+                    anchor_report_code(1,"modules_code",module_code);
+                }
                 if(ret==HA_OK || ret==HA_MISSING) {
                     anchor_last_graph.pid=pid; anchor_last_graph.image=reader.image_base;
                     anchor_last_graph.layout=layout;
@@ -260,6 +275,7 @@ static int locate_sources_fast(int pid, struct source *sources, size_t count, in
                     anchor_last_graph.valid=1;
                 }
                 DIAG_EVENT("Hermes anchor walk result=%d runtimes=%zu modules=%zu reads=%zu",ret,reader.runtimes,reader.modules,reader.calls);
+                DIAG_EVENT("Hermes stopped-walk header reuse=%u",reader.header_hits);
                 DIAG_EVENT("Hermes walk stage=%s read_failures=%zu runtime=%x provider=%x object=%x data=%x size=%x",
                            reader.walk_stage?reader.walk_stage:"unknown",reader.read_failures,layout.runtime,layout.provider,
                            layout.raw.object,layout.raw.data,layout.raw.size);

@@ -22,6 +22,10 @@ struct hbc_plan {
  * the same selected-size helper evidence used for the control-center bundle. */
 int hbc_make_plan(const uint8_t *data, size_t len, int card_host,
                   struct hbc_plan *plan, char *error, size_t error_size);
+/* Read-only candidate filters. Roles: 1=browser card, 2=control center,
+ * 0=unrecognized, -1=malformed/ambiguous. Never authorize a patch alone. */
+size_t hbc_candidate_prefix_size(const uint8_t header[128]);
+int hbc_candidate_role(const uint8_t *prefix,size_t size);
 #if TEST_HBC_LIVE_PLAN || HBC_ENABLE_DIAGNOSTICS
 /* Failure-only, read-only description: at most 60 ASCII lines, 191 bytes each.
  * Callback receives bounded evidence, never a replacement patch plan. */

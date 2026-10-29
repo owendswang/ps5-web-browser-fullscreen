@@ -85,6 +85,28 @@ static uint32_t string_id(const struct view *v, const char *text) {
     }
     return result;
 }
+size_t hbc_candidate_prefix_size(const uint8_t header[128]) {
+    struct view v;
+    if(init(&v,header,u32(header+32)))return 0;
+    return (size_t)v.storage+v.storage_size;
+}
+int hbc_candidate_role(const uint8_t *prefix,size_t size) {
+    struct view v;
+    if(size<128 || init(&v,prefix,u32(prefix+32)) ||
+       (size_t)v.storage+v.storage_size>size)return -1;
+    const char *clamps[]={"AC SDK: requested AC selected height of \"",
+        "AC SDK: requested AC selected width of \""};
+    for(unsigned i=0;i<2;i++)if(string_id(&v,clamps[i])==UINT32_MAX)return 0;
+    const char *browser[]={"WebBrowserActionCard","WebViewPS","cursorEnabled"};
+    const char *control[]={"[ControlCenter] ApplicationError:",
+        "[ControlCenter] Invalid deeplink parameter : ","[ControlCenter] NetworkError:"};
+    unsigned card=1,center=1;
+    for(unsigned i=0;i<3;i++) {
+        card&=string_id(&v,browser[i])!=UINT32_MAX;
+        center&=string_id(&v,control[i])!=UINT32_MAX;
+    }
+    return card && center?-1:card?1:center?2:0;
+}
 static unsigned operand(const uint8_t *p, unsigned offset, unsigned width) {
     unsigned value=0;
     for (unsigned i=0; i<width && i<4; i++) value|=(unsigned)p[offset+i]<<(8*i);

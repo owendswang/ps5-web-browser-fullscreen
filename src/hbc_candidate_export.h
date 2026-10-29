@@ -16,38 +16,50 @@
 
 #define HBC_DUMP_RAW_MAX (8U*1024*1024)
 #define HBC_DUMP_GZIP_MAX (4U*1024*1024)
-struct hbc_dump_spec { uint32_t length; uint8_t source_hash[20]; const char *tag; };
-static const struct hbc_dump_spec hbc_dump_specs[2]={
-    {7270464,{0x49,0x8c,0xf4,0x78,0x47,0xf1,0x84,0x3c,0xf2,0x09,0x3f,0x49,0x48,0x9a,0xe0,0x88,0xde,0xfe,0xf3,0xc4},"498cf478"},
-    {6144752,{0x9c,0xc2,0x1b,0x69,0xdf,0xe2,0x69,0xde,0x2e,0x23,0x57,0xfb,0x79,0x0c,0x1c,0xad,0xf2,0x08,0x9e,0xe6},"9cc21b69"}
-};
-static inline int hbc_dump_match(const uint8_t header[128],unsigned index) {
+#define HBC_CANDIDATES_MAX 128
+static inline uint32_t hbc_candidate_length(const uint8_t *header) {
+    uint32_t length; memcpy(&length,header+32,4); return length;
+}
+static inline int hbc_candidate_header(const uint8_t header[128]) {
     static const uint8_t magic[8]={0xc6,0x1f,0xbc,3,0xc1,3,0x19,0x1f};
     uint32_t version,length;
     memcpy(&version,header+8,4); memcpy(&length,header+32,4);
-    return index<2 && !memcmp(header,magic,8) && version==89 &&
-        length==hbc_dump_specs[index].length &&
-        !memcmp(header+12,hbc_dump_specs[index].source_hash,20);
+    return !memcmp(header,magic,8) && version==89 && length>=128 && length<=HBC_DUMP_RAW_MAX;
 }
 /* Observe the entire bounded native walk, independently of the eight-header
  * diagnostic preview. Duplicate modules sharing a buffer are not ambiguity. */
-static struct {
+static struct hbc_inventory {
     int pid;
-    struct { unsigned matches; uintptr_t base; uint8_t header[128]; } items[2];
+    unsigned count,overflow,changed,unsupported;
+    struct { uintptr_t base; uint8_t header[128]; } items[HBC_CANDIDATES_MAX];
 } hbc_candidate_inventory;
+static inline int hbc_inventory_equal(const struct hbc_inventory *a,const struct hbc_inventory *b) {
+    if(a->pid!=b->pid || a->count!=b->count || a->overflow || b->overflow ||
+       a->changed || b->changed || a->unsupported!=b->unsupported)return 0;
+    for(unsigned i=0;i<a->count;i++) {
+        unsigned j=0;
+        while(j<b->count && a->items[i].base!=b->items[j].base)j++;
+        if(j==b->count || memcmp(a->items[i].header,b->items[j].header,128))return 0;
+    }
+    return 1;
+}
 static inline void hbc_candidate_reset(int pid) {
     memset(&hbc_candidate_inventory,0,sizeof(hbc_candidate_inventory)); hbc_candidate_inventory.pid=pid;
 }
 static inline void hbc_candidate_note(uintptr_t base,const uint8_t header[128]) {
-    for(unsigned i=0;i<2;i++)if(hbc_dump_match(header,i)) {
-        if(!hbc_candidate_inventory.items[i].matches) {
-            hbc_candidate_inventory.items[i].base=base;
-            memcpy(hbc_candidate_inventory.items[i].header,header,128);
-            hbc_candidate_inventory.items[i].matches=1;
-        } else if(hbc_candidate_inventory.items[i].base!=base ||
-                  memcmp(hbc_candidate_inventory.items[i].header,header,128))
-            hbc_candidate_inventory.items[i].matches=2;
+    for(unsigned i=0;i<hbc_candidate_inventory.count;i++)if(hbc_candidate_inventory.items[i].base==base) {
+        if(memcmp(hbc_candidate_inventory.items[i].header,header,128))hbc_candidate_inventory.changed=1;
+        return;
     }
+    if(!hbc_candidate_header(header)) { hbc_candidate_inventory.unsupported++; return; }
+    if(hbc_candidate_inventory.count==HBC_CANDIDATES_MAX) { hbc_candidate_inventory.overflow=1; return; }
+    unsigned i=hbc_candidate_inventory.count++;
+    hbc_candidate_inventory.items[i].base=base;
+    memcpy(hbc_candidate_inventory.items[i].header,header,128);
+}
+static inline int hbc_dump_match(const uint8_t header[128],unsigned index) {
+    return index<hbc_candidate_inventory.count && hbc_candidate_header(header) &&
+        !memcmp(header,hbc_candidate_inventory.items[index].header,128);
 }
 struct hbc_dump_result { size_t raw_bytes,gzip_bytes,read_bytes; uint32_t raw_crc32; };
 /* Caller validates PID/image and the complete non-device VM range. A second
@@ -57,10 +69,10 @@ static inline const char *hbc_candidate_read(int (*read_memory)(void *,uintptr_t
         uint8_t **snapshot,struct hbc_dump_result *out) {
     *snapshot=NULL;
     memset(out,0,sizeof(*out));
-    if(!hbc_dump_match(header,index) || base<0x10000 ||
-       base>=0x100000000000ULL || hbc_dump_specs[index].length>0x100000000000ULL-base)
+    if(!hbc_dump_match(header,index) || base!=hbc_candidate_inventory.items[index].base || base<0x10000 ||
+       base>=0x100000000000ULL || hbc_candidate_length(header)>0x100000000000ULL-base)
         return "candidate_identity";
-    size_t length=hbc_dump_specs[index].length;
+    size_t length=hbc_candidate_length(header);
     if(length>HBC_DUMP_RAW_MAX)return "raw_size_limit";
     uint8_t *raw=malloc(length);
     const char *failure="allocation";

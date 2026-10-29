@@ -27,30 +27,36 @@ static int hbc_dump_range(int pid,uintptr_t base,size_t length) {
 #if TEST_HBC_EXPORT
 static void hbc_candidate_export(int pid) {
     int saved_errno=errno;
-    /* Only the two exact source-hash/length identities in the forwarded v6
-     * report. No nearby-size heuristic and no unrelated process memory dump. */
-    if(kernel_get_fw_version()!=0x10010000 || hbc_candidate_inventory.pid!=pid || !hbc_dump_scope(pid)) {
-        DIAG_EVENT("HBC evidence skipped: firmware/PID/validated graph scope unavailable"); goto done;
+    if(hbc_candidate_inventory.pid!=pid || !hbc_dump_scope(pid)) {
+        DIAG_EVENT("HBC evidence skipped: PID/validated graph scope unavailable"); goto done;
     }
-    DIAG_EVENT("HBC evidence: at most 2 reported candidates; raw<=8MiB/file gzip<=4MiB/file; diagnostic only");
-    for(unsigned candidate=0;candidate<2;candidate++) {
-        unsigned hits=hbc_candidate_inventory.items[candidate].matches;
-        if(hits!=1) { DIAG_EVENT("HBC evidence %s skipped: matching samples=%u",hbc_dump_specs[candidate].tag,hits); continue; }
+    DIAG_EVENT("HBC evidence: at most 2 role candidates; raw<=8MiB/file gzip<=4MiB/file; diagnostic only");
+    size_t budget=64U*1024*1024; unsigned saved=0;
+    for(unsigned candidate=0;candidate<hbc_candidate_inventory.count && saved<2;candidate++) {
+        const uint8_t *header=hbc_candidate_inventory.items[candidate].header;
         uintptr_t base=hbc_candidate_inventory.items[candidate].base;
-        if(!hbc_dump_scope(pid) || !hbc_dump_range(pid,base,hbc_dump_specs[candidate].length)) {
-            DIAG_EVENT("HBC evidence %s skipped: PID/image or readable non-device range changed",hbc_dump_specs[candidate].tag); continue;
+        size_t prefix_size=hbc_candidate_prefix_size(header);
+        if(!prefix_size)continue;
+        if(prefix_size>4U*1024*1024 || prefix_size>budget)break;
+        budget-=prefix_size;
+        if(!hbc_dump_scope(pid) || !hbc_dump_range(pid,base,hbc_candidate_length(header))) {
+            DIAG_EVENT("HBC evidence %u skipped: PID/image or readable range changed",candidate); continue;
         }
+        uint8_t *prefix=malloc(prefix_size); if(!prefix)break;
+        int role=anchor_copy(&pid,base,prefix,prefix_size) || memcmp(prefix,header,128)?0:hbc_candidate_role(prefix,prefix_size);
+        free(prefix); if(role<=0)continue;
+        saved++;
         char path[160];
-        snprintf(path,sizeof(path),"/data/web-browser-hbc-10010000-%s.hbc.gz",hbc_dump_specs[candidate].tag);
+        snprintf(path,sizeof(path),"/data/web-browser-hbc-%08x-%u.hbc.gz",kernel_get_fw_version(),candidate);
         struct hbc_dump_result report;
         const char *failure=hbc_dump_capture(anchor_copy,&pid,base,hbc_candidate_inventory.items[candidate].header,candidate,path,&report);
         if(!failure && !hbc_dump_scope(pid)) {
             unlink(path); failure="scope_changed_after_capture";
         }
-        if(failure)DIAG_EVENT("HBC evidence %s failed=%s read_bytes=%zu",hbc_dump_specs[candidate].tag,failure,report.read_bytes);
+        if(failure)DIAG_EVENT("HBC evidence %u failed=%s read_bytes=%zu",candidate,failure,report.read_bytes);
         else {
             DIAG_EVENT("HBC evidence saved=%s raw=%zu gzip=%zu base=%lx",path,report.raw_bytes,report.gzip_bytes,base);
-            DIAG_EVENT("HBC evidence %s raw_crc32=%08x read_bytes=%zu two_pass_equal=yes",hbc_dump_specs[candidate].tag,report.raw_crc32,report.read_bytes);
+            DIAG_EVENT("HBC evidence %u raw_crc32=%08x read_bytes=%zu two_pass_equal=yes",candidate,report.raw_crc32,report.read_bytes);
         }
     }
 done:
