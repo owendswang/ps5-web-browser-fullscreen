@@ -184,6 +184,7 @@ static int trace_request(int request, int pid, void *address, int data) {
     return ret;
 }
 static int trace(int request, int pid) { return trace_request(request,pid,NULL,0); }
+#include "trace_cleanup.h"
 #include "jsc_fullscreen.h"
 #include "browser_engine.h"
 #include "shellui_lifecycle.h"
@@ -284,8 +285,10 @@ int main(void) {
     REPORT_TIMER("patch_transaction",patch_started);
 finish:
     if(attached) {
-        if(trace(PT_DETACH,pid)) { DIAG_ERROR("transaction.detach",errno,"Cannot detach from ShellUI"); perror("PT_DETACH"); failure="cannot detach from ShellUI"; result=1; }
-        else attached=0;
+        if(trace_cleanup(pid,&attached)) {
+            failure=attached?"cannot detach from ShellUI":"ShellUI exited during cleanup";
+            perror("PT_DETACH"); result=1;
+        }
     }
     if(!result && !attached && (engine==BROWSER_JSC?jsc_commit():hybrid_commit())) {
         result=2; DIAG_ERROR("cache.save",errno,"RAM operation succeeded but INI save failed");

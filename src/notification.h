@@ -16,9 +16,9 @@ static void notify_result(int result, int restore, int inspect, const char *fail
     struct fullscreen_notification request={0};
     const char *operation=inspect?"Browser inspection":restore?"Browser layout restore":"Browser fullscreen";
     if(result==1)
-        snprintf(request.message,sizeof(request.message),"%s failed: %s. Check payload output.",operation,failure);
+        snprintf(request.message,sizeof(request.message),"%s failed: %s. Diagnostics, if saved: /data/web-browser-fullscreen.ini",operation,failure);
     else if(result==2)
-        snprintf(request.message,sizeof(request.message),"%s succeeded; INI save failed.",operation);
+        snprintf(request.message,sizeof(request.message),"%s succeeded; INI update failed: /data/web-browser-fullscreen.ini",operation);
     else
         snprintf(request.message,sizeof(request.message),"%s succeeded.%s",operation,inspect?"":" Reopen the browser.");
     int ret=sceKernelSendNotificationRequest(0,&request,sizeof(request),0);

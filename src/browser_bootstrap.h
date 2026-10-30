@@ -7,7 +7,9 @@ int sceUserServiceGetForegroundUser(int *);
 int sceSystemServiceLaunchWebBrowser(const char *, void *);
 int sceKernelLoadStartModule(const char *, size_t, const void *, uint32_t, void *, int *);
 
+#ifndef HYBRID_BROWSER_URL
 #define HYBRID_BROWSER_URL "http://127.0.0.1:8888/"
+#endif
 #ifndef HYBRID_OBSERVE_SHELLUI
 #define HYBRID_OBSERVE_SHELLUI(phase,pid) ((void)0)
 #endif

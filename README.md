@@ -55,7 +55,7 @@ The patch removes browser chrome and size limits while preserving ordinary brows
 
 - [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk), John Tornblom and contributors: build/runtime foundation and browser API reference; GPLv3-or-later.
 - [Hermes](https://github.com/facebook/hermes), Meta Platforms, Inc. and affiliates: bytecode definitions; MIT. Included as an unmodified submodule with its license notices preserved.
-- [PS5 Web File Manager](https://github.com/owendswang/ps5-web-file-manager): home-UI navigation implementation reference; GPLv3-or-later.
+- [PS5 Web File Manager](https://github.com/owendswang/ps5-web-file-manager): home-UI navigation and embedded integration reference; GPLv3-or-later.
 - [ftpsrv](https://github.com/ps5-payload-dev/ftpsrv), John Tornblom and contributors: SELF format reference; GPLv3-or-later.
 - [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager): ordinary browser-launch API reference; GPLv3.
 - [hermes-dec](https://github.com/P1sec/hermes-dec), P1 Security / Marin Moulinier: offline research tool; AGPLv3-or-later. Not bundled.
