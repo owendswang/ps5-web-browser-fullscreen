@@ -322,7 +322,7 @@ finish:
         else if(hybrid_live_verified) {
             diagnostic.result=0;
             diag_text(diagnostic.stage,sizeof(diagnostic.stage),"test.hermes_live_plan");
-            diag_text(diagnostic.reason,sizeof(diagnostic.reason),"Live semantic plan verified; associated module text retained for review");
+            diag_text(diagnostic.reason,sizeof(diagnostic.reason),"Live semantic plan verified; discovery evidence retained for review");
             diag_text(diagnostic.summary,sizeof(diagnostic.summary),"Test operation succeeded; console fullscreen behavior requires observation");
             diag_text(diagnostic.cache,sizeof(diagnostic.cache),hybrid_cache_status);
             if(diag_publish(HYBRID_CACHE_PATH)) { result=2; perror("Cannot save live-plan evidence"); }

@@ -8,13 +8,13 @@
 #if FULLSCREEN_PASSIVE_DIAGNOSTICS
 #define DIAG_BUILD "2026-10-28-passive-vm-diagnostics-v5"
 #elif TEST_HBC_LIVE_PLAN
-#define DIAG_BUILD "2026-10-30-test-reference-1120-v16"
+#define DIAG_BUILD "2026-10-30-test-reference-1300-v17"
 #elif TEST_HBC_EXPORT
 #define DIAG_BUILD "2026-10-28-test-hbc-evidence-v7"
 #elif FULLSCREEN_SAFE_SCAN
 #define DIAG_BUILD "2026-10-28-test-open-home-v6"
 #else
-#define DIAG_BUILD "2026-10-30-reference-1120-v16"
+#define DIAG_BUILD "2026-10-30-reference-1300-v17"
 #endif
 enum { DIAG_EVENTS=256, DIAG_EVENT_BYTES=192, DIAG_CAPACITY=54272 };
 _Static_assert(DIAG_CAPACITY+HYBRID_CACHE_CAPACITY<INI_FILE_CAPACITY,"profile and report capacity");
@@ -85,6 +85,8 @@ static inline void diag_engine(int hermes, int jsc, const char *engine) {
 }
 static inline void diag_body(struct fp_writer *w, const struct diagnostic_report *d) {
     unsigned count=d->total<DIAG_EVENTS?d->total:DIAG_EVENTS;
+    /* Keep the legacy format identifier for existing readers. The result field
+     * determines success/failure; successful tests may retain discovery evidence. */
     fp_write(w,"[diagnostics]\nformat=web-browser-fullscreen-failure\nversion=%u\n",d->version);
     if(d->version>=2)fp_write(w,"build=%s\n",d->build);
     fp_write(w,"timestamp_unix=%u\nfirmware=0x%08x\nengine=%s\noperation=%s\nresult=%u\nshellui_pid=%u\nhermes_loaded=%s\njsc_loaded=%s\nstage=%s\nreason=%s\nsummary=%s\nerror_code=0x%08x\ncache_state=%s\nevent_count=%u\nevents_dropped=%u\nevents_truncated=%u\n",
