@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
-#if TEST_HBC_LIVE_PLAN || HBC_ENABLE_DIAGNOSTICS
+#if FULLSCREEN_LIVE_PLAN || HBC_ENABLE_DIAGNOSTICS
 #include <stdarg.h>
 #endif
 
@@ -292,7 +292,7 @@ int hbc_make_plan(const uint8_t *data, size_t len, int card_host,
     return 0;
 }
 
-#if TEST_HBC_LIVE_PLAN || HBC_ENABLE_DIAGNOSTICS
+#if FULLSCREEN_LIVE_PLAN || HBC_ENABLE_DIAGNOSTICS
 struct hbc_evidence {
     void (*emit)(void *,const char *); void *context;
     unsigned lines,omitted,functions; uint32_t seen[8];

@@ -4,10 +4,10 @@
 #include "fixed_profile_export.h"
 #include "diagnostic_events.h"
 #include "scan_observations.h"
-#if TEST_HBC_LIVE_PLAN || TEST_HBC_EXPORT
+#if FULLSCREEN_LIVE_PLAN || TEST_HBC_EXPORT
 #include "hbc_candidate_export.h"
 #endif
-#if TEST_HBC_LIVE_PLAN && DIAG_DEEP
+#if FULLSCREEN_LIVE_PLAN && DIAG_DEEP
 #include "hbc_module_identity.h"
 #endif
 #ifndef FULLSCREEN_SAFE_SCAN
@@ -95,7 +95,7 @@ struct anchor_hbc_samples {
     struct { uintptr_t base; uint8_t header[128]; } samples[8];
 };
 static void anchor_sample_hbc(void *context,uintptr_t base,const uint8_t *header) {
-#if TEST_HBC_LIVE_PLAN || TEST_HBC_EXPORT
+#if FULLSCREEN_LIVE_PLAN || TEST_HBC_EXPORT
     hbc_candidate_note(base,header);
 #endif
     struct anchor_hbc_samples *s=context; s->observed++;
@@ -189,7 +189,7 @@ static void anchor_report_hbc(const struct anchor_hbc_samples *s) {
     }
 }
 static int locate_sources_fast(int pid, struct source *sources, size_t count, int *attached) {
-#if TEST_HBC_LIVE_PLAN || TEST_HBC_EXPORT
+#if FULLSCREEN_LIVE_PLAN || TEST_HBC_EXPORT
     hbc_candidate_reset(pid);
 #endif
     scan_native_reset(pid);
@@ -258,7 +258,7 @@ static int locate_sources_fast(int pid, struct source *sources, size_t count, in
                 anchor_stage="object walk";
                 struct anchor_hbc_samples samples={.sources=sources};
                 reader.observe_hbc=anchor_sample_hbc; reader.observe_context=&samples;
-#if TEST_HBC_LIVE_PLAN && DIAG_DEEP
+#if FULLSCREEN_LIVE_PLAN && DIAG_DEEP
                 struct hmi_context identity={.reader=&reader,.layout=&layout,.pid=pid,
                     .enabled=hmi_profile(collector-reader.image_base,collector_code)};
                 reader.observe_module=hmi_observe; reader.module_context=&identity;

@@ -41,11 +41,11 @@ For diagnostic test builds:
 make test
 ```
 
-Outputs: `web-browser-fullscreen-test.elf`, `web-browser-restore-test.elf` and `web-browser-inspect-test.elf`. Send them in the same way. Test builds provide additional discovery and diagnostics and may take longer to run.
+Outputs: `web-browser-fullscreen-test.elf`, `web-browser-restore-test.elf` and `web-browser-inspect-test.elf`. Send them in the same way. Test builds additionally enable a slow memory scan as the final fallback.
 
 ## How it works
 
-1. Detect the browser's scripting engine and try built-in offsets, then cached offsets, then dynamic discovery.
+1. Detect the browser's scripting engine and try built-in offsets, then cached offsets, then dynamic discovery from disk bundles or registered live bytecode.
 2. If initialization is needed, open the browser and return home once before retrying.
 3. Validate and patch the layout in memory, then verify the changes. Successfully discovered offsets are cached for future runs; built-in offsets need no cache.
 

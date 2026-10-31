@@ -4,6 +4,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Retain compatibility with existing local research build commands. */
+#ifndef FULLSCREEN_LIVE_PLAN
+#ifdef TEST_HBC_LIVE_PLAN
+#define FULLSCREEN_LIVE_PLAN TEST_HBC_LIVE_PLAN
+#else
+#define FULLSCREEN_LIVE_PLAN 0
+#endif
+#endif
+
 #define HBC_PATCH_MAX 4
 #define HBC_PATCH_BYTES 64
 struct hbc_patch {
@@ -26,7 +35,7 @@ int hbc_make_plan(const uint8_t *data, size_t len, int card_host,
  * 0=unrecognized, -1=malformed/ambiguous. Never authorize a patch alone. */
 size_t hbc_candidate_prefix_size(const uint8_t header[128]);
 int hbc_candidate_role(const uint8_t *prefix,size_t size);
-#if TEST_HBC_LIVE_PLAN || HBC_ENABLE_DIAGNOSTICS
+#if FULLSCREEN_LIVE_PLAN || HBC_ENABLE_DIAGNOSTICS
 /* Failure-only, read-only description: at most 60 ASCII lines, 191 bytes each.
  * Callback receives bounded evidence, never a replacement patch plan. */
 void hbc_plan_failure_evidence(const uint8_t *data,size_t length,int card_host,

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* Test-only plans from registered HBCs and unique semantic roles. */
+/* Plans from registered HBCs and unique semantic roles. */
 #ifndef HBC_LIVE_PLAN_H
 #define HBC_LIVE_PLAN_H
 #include "hbc_candidate_console.h"
@@ -53,7 +53,7 @@ static int hybrid_live_prepare(int pid,struct source *sources,int *attached) {
     int result=-1;
     hybrid_pending=0; hybrid_discovered_valid=0;
     DIAG_STEP("hermes.live_semantic");
-    DIAG_EVENT("Test live HBC plan: unique role candidates; full semantic analysis in RAM; dump disabled=%u",!TEST_HBC_EXPORT);
+    DIAG_EVENT("Live HBC plan: unique role candidates; full semantic analysis in RAM; dump disabled=%u",!TEST_HBC_EXPORT);
     for(unsigned i=0;i<2;i++) {
         unsigned candidate=selected[i];
         expected[i]=hbc_candidate_inventory.items[candidate].base;
@@ -109,7 +109,7 @@ static int hybrid_live_prepare(int pid,struct source *sources,int *attached) {
     hybrid_live_verified=1;
     DIAG_STEP("hermes.live_ready");
     DIAG_EVENT("Live HBC plan verified: 6 patch sites; fixed INI scheduled after transaction; no dump");
-    puts("Plan source: test live HBC semantic discovery; verified original bytes retained for restore");
+    puts("Plan source: live HBC semantic discovery; verified original bytes retained for restore");
     result=0;
 done:
     for(unsigned i=0;i<2;i++)free(live[i].allocation);

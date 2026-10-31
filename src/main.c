@@ -318,12 +318,12 @@ finish:
             if(diag_publish(HYBRID_CACHE_PATH))perror("Cannot save failure diagnostics");
             else printf("Failure diagnostics saved: %s\n",HYBRID_CACHE_PATH);
         }
-#if TEST_HBC_LIVE_PLAN
+#if FULLSCREEN_LIVE_PLAN
         else if(hybrid_live_verified) {
             diagnostic.result=0;
-            diag_text(diagnostic.stage,sizeof(diagnostic.stage),"test.hermes_live_plan");
+            diag_text(diagnostic.stage,sizeof(diagnostic.stage),"hermes.live_plan");
             diag_text(diagnostic.reason,sizeof(diagnostic.reason),"Live semantic plan verified; discovery evidence retained for review");
-            diag_text(diagnostic.summary,sizeof(diagnostic.summary),"Test operation succeeded; console fullscreen behavior requires observation");
+            diag_text(diagnostic.summary,sizeof(diagnostic.summary),"Operation succeeded; console fullscreen behavior requires observation");
             diag_text(diagnostic.cache,sizeof(diagnostic.cache),hybrid_cache_status);
             if(diag_publish(HYBRID_CACHE_PATH)) { result=2; perror("Cannot save live-plan evidence"); }
         }

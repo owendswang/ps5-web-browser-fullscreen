@@ -12,36 +12,37 @@ ifeq ($(FULLSCREEN_DEBUG),1)
 CFLAGS += -g
 endif
 DIAG_FLAGS := -DDIAG_DEEP=$(DEEP_DIAGNOSTICS)
+DISCOVERY_FLAGS := -DFULLSCREEN_LIVE_PLAN=1 -DTEST_HBC_EXPORT=0 -DTEST_HERMES_EXPORT=0
 HOST_CC ?= cc
 HEADERS := $(wildcard src/*.h)
 SOURCES := src/main.c src/hbc_patch.c
 LIBS := -lSceUserService -lSceSystemService
-TEST_FLAGS := -Isrc -DFULLSCREEN_SAFE_SCAN=1 -DTEST_HERMES_EXPORT=0 -DTEST_HBC_EXPORT=0 -DTEST_HBC_LIVE_PLAN=1
+TEST_FLAGS := -DFULLSCREEN_SAFE_SCAN=1
 TEST_ELFS := web-browser-fullscreen-test.elf web-browser-restore-test.elf web-browser-inspect-test.elf
 
 .PHONY: all inspect test profile-tool opcodes jsc-hook clean
 all: web-browser-fullscreen.elf web-browser-restore.elf
 
 web-browser-fullscreen.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(DIAG_FLAGS) -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(DISCOVERY_FLAGS) -DFULLSCREEN_SAFE_SCAN=0 -o $@ $(SOURCES) $(LIBS)
 
 web-browser-restore.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(DIAG_FLAGS) -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(DISCOVERY_FLAGS) -DFULLSCREEN_SAFE_SCAN=0 -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
 
 inspect: web-browser-inspect.elf
 web-browser-inspect.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(DIAG_FLAGS) -DLOCATE_ONLY=1 -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(DISCOVERY_FLAGS) -DFULLSCREEN_SAFE_SCAN=0 -DLOCATE_ONLY=1 -o $@ $(SOURCES) $(LIBS)
 
 test: $(TEST_ELFS)
 
 web-browser-fullscreen-test.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(TEST_FLAGS) -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(DISCOVERY_FLAGS) $(TEST_FLAGS) -o $@ $(SOURCES) $(LIBS)
 
 web-browser-restore-test.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(TEST_FLAGS) -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(DISCOVERY_FLAGS) $(TEST_FLAGS) -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
 
 web-browser-inspect-test.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(TEST_FLAGS) -DLOCATE_ONLY=1 -o $@ $(SOURCES) $(LIBS)
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(DISCOVERY_FLAGS) $(TEST_FLAGS) -DLOCATE_ONLY=1 -o $@ $(SOURCES) $(LIBS)
 
 profile-tool: src/profile_tool.c $(HEADERS)
 	$(HOST_CC) -std=c11 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror -O2 -Isrc src/profile_tool.c -o profile-tool

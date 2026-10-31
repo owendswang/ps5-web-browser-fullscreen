@@ -169,7 +169,7 @@ static int hybrid_prepare_once(int pid, struct source *sources, int *attached, i
     if(!hybrid_pending)puts("Hybrid cache not refreshed: fast did not verify a complete reusable native profile");
     return 0;
 }
-#if TEST_HBC_LIVE_PLAN
+#if FULLSCREEN_LIVE_PLAN
 #include "hbc_live_plan.h"
 #endif
 #if FULLSCREEN_SAFE_SCAN
@@ -228,7 +228,7 @@ static int hybrid_prepare(int *target_pid, struct source *sources, int *attached
     hybrid_safe_used=0;
 #endif
     int result=hybrid_prepare_once(pid,sources,attached,1);
-#if TEST_HBC_LIVE_PLAN
+#if FULLSCREEN_LIVE_PLAN
     if(result==HA_MISSING) {
         int live=hybrid_live_prepare(pid,sources,attached);
         if(live<=0)return live;
@@ -252,7 +252,7 @@ static int hybrid_prepare(int *target_pid, struct source *sources, int *attached
     pid=*target_pid;
     result=hybrid_prepare_once(pid,sources,attached,0);
     if(result==HA_MISSING || result==HA_UNSUPPORTED) {
-#if TEST_HBC_LIVE_PLAN
+#if FULLSCREEN_LIVE_PLAN
         int live=hybrid_live_prepare(pid,sources,attached);
         if(live<=0)return live;
 #endif
