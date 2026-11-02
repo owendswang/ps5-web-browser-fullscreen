@@ -19,6 +19,12 @@
 #include <ps5/kernel.h>
 #include "hbc_patch.h"
 #include "notification.h"
+#include "browser_density.h"
+
+#ifndef BROWSER_DEVICE_SCALE
+#define BROWSER_DEVICE_SCALE 1
+#endif
+_Static_assert(BROWSER_DEVICE_SCALE==1 || BROWSER_DEVICE_SCALE==2,"Unsupported browser density");
 
 #ifndef RESTORE
 #define RESTORE 0
@@ -208,6 +214,11 @@ int main(void) {
     printf("Web browser fullscreen %s fw=%08x ShellUI=%d\n",
            LOCATE_ONLY?"inspect":RESTORE?"restore":"apply",kernel_get_fw_version(),pid);
     if(pid<0) { if(!diagnostic.reason[0])DIAG_ERROR("shellui.find",0,"SceShellUI was not found"); goto finish; }
+    if(!LOCATE_ONLY && browser_density_check(pid,RESTORE?1:BROWSER_DEVICE_SCALE)) {
+        failure="browser density configuration unavailable";
+        DIAG_ERROR("density.validate",0,"Density %ux is unavailable or its native code is unrecognized",RESTORE?1:BROWSER_DEVICE_SCALE);
+        goto finish;
+    }
     failure="browser engine unavailable or ambiguous";
     DIAG_STEP("engine.detect");
     engine=browser_engine(pid);
@@ -284,6 +295,11 @@ int main(void) {
     result=0;
     REPORT_TIMER("patch_transaction",patch_started);
 finish:
+    if(!result && !LOCATE_ONLY &&
+       (!attached || browser_density_apply_stopped(pid,RESTORE?1:BROWSER_DEVICE_SCALE))) {
+        result=1;failure="fullscreen operation succeeded but density selection failed";
+        DIAG_ERROR("density.apply",0,"%s",failure);
+    }
     if(attached) {
         if(trace_cleanup(pid,&attached)) {
             failure=attached?"cannot detach from ShellUI":"ShellUI exited during cleanup";

@@ -14,16 +14,19 @@ endif
 DIAG_FLAGS := -DDIAG_DEEP=$(DEEP_DIAGNOSTICS)
 HOST_CC ?= cc
 HEADERS := $(wildcard src/*.h)
-SOURCES := src/main.c src/hbc_patch.c
+SOURCES := src/main.c src/hbc_patch.c src/browser_density.c
 LIBS := -lSceUserService -lSceSystemService
 TEST_FLAGS := -Isrc -DFULLSCREEN_SAFE_SCAN=1 -DTEST_HERMES_EXPORT=0 -DTEST_HBC_EXPORT=0 -DTEST_HBC_LIVE_PLAN=1
 TEST_ELFS := web-browser-fullscreen-test.elf web-browser-restore-test.elf web-browser-inspect-test.elf
 
 .PHONY: all inspect test profile-tool opcodes jsc-hook clean
-all: web-browser-fullscreen.elf web-browser-restore.elf
+all: web-browser-fullscreen.elf web-browser-fullscreen-2x.elf web-browser-restore.elf
 
 web-browser-fullscreen.elf: $(SOURCES) $(HEADERS) Makefile
 	$(CC) $(CFLAGS) $(DIAG_FLAGS) -o $@ $(SOURCES) $(LIBS)
+
+web-browser-fullscreen-2x.elf: $(SOURCES) $(HEADERS) Makefile
+	$(CC) $(CFLAGS) $(DIAG_FLAGS) -DBROWSER_DEVICE_SCALE=2 -o $@ $(SOURCES) $(LIBS)
 
 web-browser-restore.elf: $(SOURCES) $(HEADERS) Makefile
 	$(CC) $(CFLAGS) $(DIAG_FLAGS) -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
@@ -53,4 +56,4 @@ jsc-hook:
 	python3 src/generate_jsc_hook.py
 
 clean:
-	$(RM) web-browser-fullscreen.elf web-browser-restore.elf web-browser-inspect.elf $(TEST_ELFS) profile-tool
+	$(RM) web-browser-fullscreen.elf web-browser-fullscreen-2x.elf web-browser-restore.elf web-browser-inspect.elf $(TEST_ELFS) profile-tool
