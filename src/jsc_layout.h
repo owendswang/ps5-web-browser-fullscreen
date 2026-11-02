@@ -8,10 +8,18 @@
 #include "jsc_profile_types.h"
 #include "jsc_hook_blob.h"
 enum { JSC_ENTRY_BYTES=32, JSC_CODE_BYTES=0x1100, JSC_CONSTANT_BYTES=0x1000,
+       JSC_COMPACT_TRAMPOLINE=(sizeof(jsc_hook_blob)+15)&~15U,
+       JSC_COMPACT_CODE_BYTES=JSC_COMPACT_TRAMPOLINE+0x50,
+       JSC_COMPACT_CONSTANT_BYTES=(sizeof(jsc_hook_constants)+15)&~15U,
        JSC_ENABLE_OFFSET=JSC_HOOK_STATE_OFFSET+10*8 };
 _Static_assert(sizeof(jsc_hook_blob)<=0x1000,"JSC code capacity");
 _Static_assert(sizeof(jsc_hook_constants)<=JSC_CONSTANT_BYTES,"JSC constant capacity");
 _Static_assert(JSC_HOOK_STATE_OFFSET+11*8<=sizeof(jsc_hook_constants),"JSC API table bounds");
+_Static_assert(JSC_COMPACT_CODE_BYTES<=JSC_CODE_BYTES,"compact JSC code capacity");
+_Static_assert(JSC_COMPACT_CONSTANT_BYTES<=JSC_CONSTANT_BYTES,"compact JSC constant capacity");
+static inline unsigned jsc_trampoline(size_t code_bytes) {
+    return code_bytes==JSC_CODE_BYTES?0x1000:JSC_COMPACT_TRAMPOLINE;
+}
 static inline int jsc_zero(const uint8_t *data, size_t size) {
     for(size_t i=0;i<size;i++)if(data[i])return 0;
     return 1;
@@ -49,9 +57,9 @@ static inline int jsc_jump(uint8_t *out, uintptr_t address, uintptr_t destinatio
     int32_t relative=(int32_t)displacement;
     out[0]=0xe9; memcpy(out+1,&relative,4); return 0;
 }
-static inline int jsc_build_image(const struct jsc_reference_profile *p, uintptr_t base, const uintptr_t state[11],
+static inline int jsc_build_image(const struct jsc_reference_profile *p, uintptr_t base, const uintptr_t state[11], unsigned trampoline,
                                 uint8_t code[JSC_CODE_BYTES], uint8_t constants[JSC_CONSTANT_BYTES], uint8_t detour[32]) {
-    if(jsc_profile_valid(p))return -1;
+    if(jsc_profile_valid(p) || (trampoline!=0x1000 && trampoline!=JSC_COMPACT_TRAMPOLINE))return -1;
     memset(code,0,JSC_CODE_BYTES); memset(constants,0,JSC_CONSTANT_BYTES);
     memcpy(code,jsc_hook_blob,sizeof(jsc_hook_blob));
     int64_t adjustment=(int64_t)p->constants_rva-(int64_t)p->code_rva-JSC_HOOK_CONSTANTS_DELTA;
@@ -65,9 +73,9 @@ static inline int jsc_build_image(const struct jsc_reference_profile *p, uintptr
     }
     memcpy(constants,jsc_hook_constants,sizeof(jsc_hook_constants));
     memcpy(constants+JSC_HOOK_STATE_OFFSET,state,11*8);
-    memcpy(code+0x1000,p->fingerprint,p->entry_length);
-    if(jsc_jump(code+0x1000+p->entry_length,base+p->code_rva+0x1000+p->entry_length,base+p->entry_rva+p->entry_length))return -1;
-    memcpy(code+0x1040,"JSCFS4V4",8);
+    memcpy(code+trampoline,p->fingerprint,p->entry_length);
+    if(jsc_jump(code+trampoline+p->entry_length,base+p->code_rva+trampoline+p->entry_length,base+p->entry_rva+p->entry_length))return -1;
+    memcpy(code+trampoline+0x40,"JSCFS4V4",8);
     memset(detour,0x90,32); return jsc_jump(detour,base+p->entry_rva,base+p->code_rva);
 }
 #endif

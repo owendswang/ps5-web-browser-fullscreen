@@ -100,8 +100,8 @@ static int jsc_run(int pid, int *attached, const char **failure) {
     const struct jsc_reference_profile *p=&jsc_record;
     uintptr_t cave=context.base+p->code_rva, data_cave=context.base+p->constants_rva;
     uint8_t code[JSC_CODE_BYTES],constants[JSC_CONSTANT_BYTES],detour[32];
-    context.state[0]=cave+0x1000;
-    if(jsc_build_image(p,context.base,context.state,code,constants,detour))return 1;
+    context.state[0]=cave+jsc_trampoline(snapshot.code_bytes);
+    if(jsc_build_image(p,context.base,context.state,jsc_trampoline(snapshot.code_bytes),code,constants,detour))return 1;
     printf("JSC verified: hook=%s enabled=%lu\n",snapshot.initialized?"installed":"absent",(unsigned long)snapshot.enabled);
     if(LOCATE_ONLY)return 0;
     DIAG_STEP("jsc.transaction");
@@ -111,7 +111,7 @@ static int jsc_run(int pid, int *attached, const char **failure) {
     if(memcmp(snapshot.entry,wanted,n) && jsc_entry_idle(pid,context.target,n)) { DIAG_ERROR("jsc.thread_check",0,"Cannot verify that all threads are outside the entry prologue"); return 1; }
     *failure="JSC RAM write or readback error";
     if(!RESTORE && !snapshot.initialized) {
-        if(jsc_write(pid,data_cave,constants,sizeof(constants)) || jsc_write(pid,cave,code,sizeof(code)))goto rollback;
+        if(jsc_write(pid,data_cave,constants,snapshot.constant_bytes) || jsc_write(pid,cave,code,snapshot.code_bytes))goto rollback;
     }
     if(snapshot.initialized && snapshot.enabled!=context.state[10] &&
        jsc_write(pid,data_cave+JSC_ENABLE_OFFSET,&context.state[10],8))goto rollback;
@@ -126,8 +126,9 @@ rollback:
     if(snapshot.initialized) {
         if(jsc_write(pid,data_cave+JSC_ENABLE_OFFSET,&snapshot.enabled,8)) { *failure="JSC toggle rollback verification error"; DIAG_ERROR("jsc.rollback",errno,"JSC toggle rollback failed"); }
     } else if(snapshot.blank) {
-        if(jsc_write(pid,cave,snapshot.code,sizeof(snapshot.code)) ||
-           jsc_write(pid,data_cave,snapshot.constants,sizeof(snapshot.constants)))*failure="JSC storage rollback verification error";
+        int code_error=jsc_write(pid,cave,snapshot.code,snapshot.code_bytes);
+        int constant_error=jsc_write(pid,data_cave,snapshot.constants,snapshot.constant_bytes);
+        if(code_error || constant_error)*failure="JSC storage rollback verification error";
     }
     return 1;
 }
