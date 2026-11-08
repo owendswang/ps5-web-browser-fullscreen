@@ -7,9 +7,15 @@
 #include <limits.h>
 #include "jsc_profile_types.h"
 #include "jsc_hook_blob.h"
-enum { JSC_ENTRY_BYTES=32, JSC_CODE_BYTES=0x1100, JSC_CONSTANT_BYTES=0x1000,
+enum { JSC_ENTRY_BYTES=32,
+       JSC_TRAMPOLINE_OFFSET=0x270,
+       JSC_MARKER_OFFSET=0x2a0,
+       JSC_CODE_BYTES=0x2c0,
+       JSC_CONSTANT_BYTES=0x1000,
        JSC_ENABLE_OFFSET=JSC_HOOK_STATE_OFFSET+10*8 };
-_Static_assert(sizeof(jsc_hook_blob)<=0x1000,"JSC code capacity");
+_Static_assert(sizeof(jsc_hook_blob)<=JSC_TRAMPOLINE_OFFSET,"JSC code capacity");
+_Static_assert(JSC_TRAMPOLINE_OFFSET+JSC_ENTRY_BYTES+5<=JSC_MARKER_OFFSET,"JSC trampoline capacity");
+_Static_assert(JSC_MARKER_OFFSET+8<=JSC_CODE_BYTES,"JSC code buffer capacity");
 _Static_assert(sizeof(jsc_hook_constants)<=JSC_CONSTANT_BYTES,"JSC constant capacity");
 _Static_assert(JSC_HOOK_STATE_OFFSET+11*8<=sizeof(jsc_hook_constants),"JSC API table bounds");
 static inline int jsc_zero(const uint8_t *data, size_t size) {
@@ -65,9 +71,9 @@ static inline int jsc_build_image(const struct jsc_reference_profile *p, uintptr
     }
     memcpy(constants,jsc_hook_constants,sizeof(jsc_hook_constants));
     memcpy(constants+JSC_HOOK_STATE_OFFSET,state,11*8);
-    memcpy(code+0x1000,p->fingerprint,p->entry_length);
-    if(jsc_jump(code+0x1000+p->entry_length,base+p->code_rva+0x1000+p->entry_length,base+p->entry_rva+p->entry_length))return -1;
-    memcpy(code+0x1040,"JSCFS4V4",8);
+    memcpy(code+JSC_TRAMPOLINE_OFFSET,p->fingerprint,p->entry_length);
+    if(jsc_jump(code+JSC_TRAMPOLINE_OFFSET+p->entry_length,base+p->code_rva+JSC_TRAMPOLINE_OFFSET+p->entry_length,base+p->entry_rva+p->entry_length))return -1;
+    memcpy(code+JSC_MARKER_OFFSET,"JSCFS4V4",8);
     memset(detour,0x90,32); return jsc_jump(detour,base+p->entry_rva,base+p->code_rva);
 }
 #endif

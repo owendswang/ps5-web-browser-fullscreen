@@ -14,7 +14,7 @@ static struct jsc_reference_profile jsc_record;
 static int jsc_pending;
 static const char *jsc_cache_status="not attempted";
 static int jsc_write(int pid, uintptr_t address, const void *data, size_t size) {
-    uint8_t check[JSC_CODE_BYTES];
+    uint8_t check[JSC_CONSTANT_BYTES];
     return size>sizeof(check) || kernel_proc_copyin(pid,data,address,size) ||
            jsc_read(pid,address,check,size) || memcmp(check,data,size);
 }
@@ -100,7 +100,7 @@ static int jsc_run(int pid, int *attached, const char **failure) {
     const struct jsc_reference_profile *p=&jsc_record;
     uintptr_t cave=context.base+p->code_rva, data_cave=context.base+p->constants_rva;
     uint8_t code[JSC_CODE_BYTES],constants[JSC_CONSTANT_BYTES],detour[32];
-    context.state[0]=cave+0x1000;
+    context.state[0]=cave+JSC_TRAMPOLINE_OFFSET;
     if(jsc_build_image(p,context.base,context.state,code,constants,detour))return 1;
     printf("JSC verified: hook=%s enabled=%lu\n",snapshot.initialized?"installed":"absent",(unsigned long)snapshot.enabled);
     if(LOCATE_ONLY)return 0;

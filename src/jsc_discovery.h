@@ -82,9 +82,12 @@ static int jsc_elf(struct jsc_context *c) {
             int32_t displacement; memcpy(&displacement,live+1,4);
             int64_t cave=(int64_t)rva+5+displacement;
             uint8_t trampoline[32];
-            if(cave<=0 || !jsc_padding_contains(c,(uintptr_t)cave,JSC_CODE_BYTES,1) ||
-               jsc_read(c->pid,c->base+(uintptr_t)cave+0x1000,trampoline,32))goto done;
-            unsigned length=jsc_prologue(trampoline);
+            if(cave<=0 || !jsc_padding_contains(c,(uintptr_t)cave,JSC_CODE_BYTES,1))goto done;
+            unsigned length=0;
+            if(!jsc_read(c->pid,c->base+(uintptr_t)cave+JSC_TRAMPOLINE_OFFSET,trampoline,32))
+                length=jsc_prologue(trampoline);
+            if(!length && !jsc_read(c->pid,c->base+(uintptr_t)cave+0x1000,trampoline,32))
+                length=jsc_prologue(trampoline);
             if(!length)goto done;
             memcpy(c->original.fingerprint,live,32);
             memcpy(c->original.fingerprint,trampoline,length);
@@ -129,7 +132,7 @@ static int jsc_validate(struct jsc_context *c, const struct jsc_reference_profil
        !jsc_padding_contains(c,p->code_rva,JSC_CODE_BYTES,1) || !jsc_padding_contains(c,p->constants_rva,JSC_CONSTANT_BYTES,0)) {
         DIAG_ERROR("jsc.candidate",0,"Candidate rejected: identity/prologue/segment bounds; entry=+%lx code=+%lx constants=+%lx",p->entry_rva,p->code_rva,p->constants_rva); return 1;
     }
-    c->state[0]=c->base+p->code_rva+0x1000;
+    c->state[0]=c->base+p->code_rva+JSC_TRAMPOLINE_OFFSET;
     if(jsc_build_image(p,c->base,c->state,code,constants,detour) ||
        jsc_read(c->pid,c->target,s->entry,32) || jsc_read(c->pid,c->base+p->code_rva,s->code,sizeof(s->code)) ||
        jsc_read(c->pid,c->base+p->constants_rva,s->constants,sizeof(s->constants))) { DIAG_ERROR("jsc.memory_read",errno,"Cannot construct/read JSC candidate images"); return 1; }
@@ -190,7 +193,7 @@ static int jsc_discover(struct jsc_context *c, struct jsc_reference_profile *out
         uint8_t *data=malloc(size); if(!data) { DIAG_ERROR("jsc.discovery",errno,"Cannot allocate padding read buffer"); return 1; }
         if(jsc_read(c->pid,c->base+p->start,data,size)) { DIAG_ERROR("jsc.discovery",errno,"Cannot read segment tail at JSC+%lx",p->start); free(data); return 1; }
         if(p->flags&PF_X) {
-            for(size_t at=0;at+JSC_CODE_BYTES<=size;at+=16)if(!memcmp(data+at+0x1040,"JSCFS4V4",8)) {
+            for(size_t at=0;at+JSC_CODE_BYTES<=size;at+=16)if(!memcmp(data+at+JSC_MARKER_OFFSET,"JSCFS4V4",8)) {
                 struct jsc_reference_profile candidate;
                 if(memcmp(data+at,jsc_hook_blob,16) || jsc_existing(c,p->start+at,&candidate)) {
                     DIAG_ERROR("jsc.retained_storage",0,"Unknown retained hook image at JSC+%lx",p->start+at);
