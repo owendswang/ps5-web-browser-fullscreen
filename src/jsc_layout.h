@@ -12,12 +12,14 @@ enum { JSC_ENTRY_BYTES=32,
        JSC_MARKER_OFFSET=0x2a0,
        JSC_CODE_BYTES=0x2c0,
        JSC_CONSTANT_BYTES=0x1000,
+       JSC_COMPACT_CONSTANT_BYTES=(sizeof(jsc_hook_constants)+15)&~15U,
        JSC_ENABLE_OFFSET=JSC_HOOK_STATE_OFFSET+10*8 };
 _Static_assert(sizeof(jsc_hook_blob)<=JSC_TRAMPOLINE_OFFSET,"JSC code capacity");
 _Static_assert(JSC_TRAMPOLINE_OFFSET+JSC_ENTRY_BYTES+5<=JSC_MARKER_OFFSET,"JSC trampoline capacity");
 _Static_assert(JSC_MARKER_OFFSET+8<=JSC_CODE_BYTES,"JSC code buffer capacity");
 _Static_assert(sizeof(jsc_hook_constants)<=JSC_CONSTANT_BYTES,"JSC constant capacity");
 _Static_assert(JSC_HOOK_STATE_OFFSET+11*8<=sizeof(jsc_hook_constants),"JSC API table bounds");
+_Static_assert(JSC_COMPACT_CONSTANT_BYTES<=JSC_CONSTANT_BYTES,"compact JSC constant capacity");
 static inline int jsc_zero(const uint8_t *data, size_t size) {
     for(size_t i=0;i<size;i++)if(data[i])return 0;
     return 1;

@@ -17,9 +17,11 @@ struct jsc_context {
 struct jsc_snapshot {
     uint8_t code[JSC_CODE_BYTES],constants[JSC_CONSTANT_BYTES],entry[32];
     uintptr_t enabled;
+    size_t code_bytes,constant_bytes;
     int initialized,blank;
 };
 static int jsc_padding_contains(const struct jsc_context *, uintptr_t, size_t, int);
+static size_t jsc_storage_size(const struct jsc_context *, uintptr_t, int);
 static int jsc_read(int pid, uintptr_t address, void *out, size_t size) {
     uint8_t *p=out;
     while(size) {
@@ -86,7 +88,8 @@ static int jsc_elf(struct jsc_context *c) {
             unsigned length=0;
             if(!jsc_read(c->pid,c->base+(uintptr_t)cave+JSC_TRAMPOLINE_OFFSET,trampoline,32))
                 length=jsc_prologue(trampoline);
-            if(!length && !jsc_read(c->pid,c->base+(uintptr_t)cave+0x1000,trampoline,32))
+            if(!length && jsc_padding_contains(c,(uintptr_t)cave,0x1100,1) &&
+               !jsc_read(c->pid,c->base+(uintptr_t)cave+0x1000,trampoline,32))
                 length=jsc_prologue(trampoline);
             if(!length)goto done;
             memcpy(c->original.fingerprint,live,32);
@@ -125,17 +128,26 @@ static int jsc_padding_contains(const struct jsc_context *c, uintptr_t rva, size
     }
     return 0;
 }
+/* Keep the mainline compact code image. Older read-only segment tails may
+ * hold only the aligned constants rather than the full reserved page. */
+static size_t jsc_storage_size(const struct jsc_context *c, uintptr_t rva, int executable) {
+    size_t full=executable?JSC_CODE_BYTES:JSC_CONSTANT_BYTES;
+    if(jsc_padding_contains(c,rva,full,executable))return full;
+    return !executable && jsc_padding_contains(c,rva,JSC_COMPACT_CONSTANT_BYTES,0)?JSC_COMPACT_CONSTANT_BYTES:0;
+}
 static int jsc_validate(struct jsc_context *c, const struct jsc_reference_profile *p, struct jsc_snapshot *s) {
     uint8_t code[JSC_CODE_BYTES],constants[JSC_CONSTANT_BYTES],detour[32];
+    s->code_bytes=jsc_storage_size(c,p->code_rva,1);
+    s->constant_bytes=jsc_storage_size(c,p->constants_rva,0);
     if(jsc_profile_valid(p) || p->firmware!=c->original.firmware || p->entry_rva!=c->original.entry_rva ||
        p->entry_length!=c->original.entry_length || memcmp(p->fingerprint,c->original.fingerprint,32) ||
-       !jsc_padding_contains(c,p->code_rva,JSC_CODE_BYTES,1) || !jsc_padding_contains(c,p->constants_rva,JSC_CONSTANT_BYTES,0)) {
+       !s->code_bytes || !s->constant_bytes) {
         DIAG_ERROR("jsc.candidate",0,"Candidate rejected: identity/prologue/segment bounds; entry=+%lx code=+%lx constants=+%lx",p->entry_rva,p->code_rva,p->constants_rva); return 1;
     }
     c->state[0]=c->base+p->code_rva+JSC_TRAMPOLINE_OFFSET;
     if(jsc_build_image(p,c->base,c->state,code,constants,detour) ||
-       jsc_read(c->pid,c->target,s->entry,32) || jsc_read(c->pid,c->base+p->code_rva,s->code,sizeof(s->code)) ||
-       jsc_read(c->pid,c->base+p->constants_rva,s->constants,sizeof(s->constants))) { DIAG_ERROR("jsc.memory_read",errno,"Cannot construct/read JSC candidate images"); return 1; }
+       jsc_read(c->pid,c->target,s->entry,32) || jsc_read(c->pid,c->base+p->code_rva,s->code,s->code_bytes) ||
+       jsc_read(c->pid,c->base+p->constants_rva,s->constants,s->constant_bytes)) { DIAG_ERROR("jsc.memory_read",errno,"Cannot construct/read JSC candidate images"); return 1; }
     unsigned n=p->entry_length;
     if(memcmp(s->entry+n,p->fingerprint+n,32-n) ||
        (memcmp(s->entry,p->fingerprint,n) && memcmp(s->entry,detour,n))) {
@@ -144,9 +156,9 @@ static int jsc_validate(struct jsc_context *c, const struct jsc_reference_profil
     }
     memcpy(&s->enabled,s->constants+JSC_ENABLE_OFFSET,8);
     memcpy(s->constants+JSC_ENABLE_OFFSET,&c->state[10],8);
-    s->initialized=s->enabled<=1 && !memcmp(s->code,code,sizeof(code)) && !memcmp(s->constants,constants,sizeof(constants));
+    s->initialized=s->enabled<=1 && !memcmp(s->code,code,s->code_bytes) && !memcmp(s->constants,constants,s->constant_bytes);
     memcpy(s->constants+JSC_ENABLE_OFFSET,&s->enabled,8);
-    s->blank=jsc_zero(s->code,sizeof(s->code)) && jsc_zero(s->constants,sizeof(s->constants));
+    s->blank=jsc_zero(s->code,s->code_bytes) && jsc_zero(s->constants,s->constant_bytes);
     int rejected=!s->initialized && (!s->blank || !memcmp(s->entry,detour,n));
     if(rejected)DIAG_ERROR("jsc.storage",0,"Unknown candidate storage: code=+%lx constants=+%lx blank=%d flag_valid=%d",p->code_rva,p->constants_rva,s->blank,s->enabled<=1);
     return rejected;
@@ -173,6 +185,15 @@ static uintptr_t jsc_blank_run(const uint8_t *data, size_t length, uintptr_t sta
     }
     return 0;
 }
+static uintptr_t jsc_blank_storage(const uint8_t *data,size_t length,uintptr_t start,int executable) {
+    size_t full=executable?JSC_CODE_BYTES:JSC_CONSTANT_BYTES;
+    uintptr_t found=length>=full?jsc_blank_run(data,length,start,full):0;
+    if(found || executable)return found;
+    /* A compact candidate must be near enough to the segment end that its
+     * address unambiguously selects the compact layout during later recovery. */
+    size_t tail=length>=full?length-full+1:0;
+    return jsc_blank_run(data+tail,length-tail,start+tail,JSC_COMPACT_CONSTANT_BYTES);
+}
 /* Bounded ELF tail reads only; never a ShellUI heap scan. Existing verified
  * storage is preferred even after restore, to preserve callback identities. */
 static int jsc_discover(struct jsc_context *c, struct jsc_reference_profile *out) {
@@ -184,7 +205,7 @@ static int jsc_discover(struct jsc_context *c, struct jsc_reference_profile *out
         }
         int32_t displacement; memcpy(&displacement,entry+1,4);
         int64_t code=(int64_t)c->original.entry_rva+5+displacement;
-        if(code<=0 || !jsc_padding_contains(c,(uintptr_t)code,JSC_CODE_BYTES,1)) { DIAG_ERROR("jsc.discovery",0,"Entry detour points outside safe executable padding"); return 1; }
+        if(code<=0 || !jsc_storage_size(c,(uintptr_t)code,1)) { DIAG_ERROR("jsc.discovery",0,"Entry detour points outside safe executable padding"); return 1; }
         return jsc_existing(c,(uintptr_t)code,out);
     }
     unsigned matches=0; uintptr_t blank_code=0,blank_constants=0;
@@ -200,9 +221,11 @@ static int jsc_discover(struct jsc_context *c, struct jsc_reference_profile *out
                     free(data); puts("JSC retained hook marker has an unknown image; no relocation"); return 1;
                 }
                 *out=candidate; matches++;
+                at+=JSC_CODE_BYTES-16;
             }
-            if(!blank_code)blank_code=jsc_blank_run(data,size,p->start,JSC_CODE_BYTES);
-        } else if((p->flags&PF_R) && !blank_constants)blank_constants=jsc_blank_run(data,size,p->start,JSC_CONSTANT_BYTES);
+            if(!blank_code)blank_code=jsc_blank_storage(data,size,p->start,1);
+        } else if((p->flags&PF_R) && !blank_constants)
+            blank_constants=jsc_blank_storage(data,size,p->start,0);
         free(data);
     }
     DIAG_EVENT("JSC discovery: retained=%u blank_code=+%lx blank_constants=+%lx",matches,blank_code,blank_constants);
