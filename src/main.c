@@ -19,6 +19,7 @@
 #include <ps5/kernel.h>
 #include "hbc_patch.h"
 #include "notification.h"
+#include "rnps_bundle_file.h"
 
 #ifndef RESTORE
 #define RESTORE 0
@@ -65,12 +66,13 @@ static uint32_t u32(const uint8_t *p) {
 }
 static int read_bundle(struct source *source) {
     DIAG_STEP("bundle.read");
-    DIAG_EVENT("Reading original RNPS bundle: %s",source->title);
+    DIAG_EVENT("Reading RNPS bundle: %s",source->title);
     START_TIMER(read_started);
     char path[256];
-    snprintf(path,sizeof(path),"/system_ex/rnps/apps/%s/application.ps.bundle",source->title);
-    FILE *file=fopen(path,"rb");
+    FILE *file=rnps_open_bundle(source->title,path,sizeof(path));
     if (!file) { DIAG_ERROR("bundle.open",errno,"Cannot open %s",path); perror(path); return -1; }
+    DIAG_EVENT("Bundle source: %s",path);
+    printf("Bundle source: %s\n",path);
     if (fseek(file,0,SEEK_END)) { DIAG_ERROR("bundle.size",errno,"Cannot seek %s",source->title); fclose(file); return -1; }
     long size=ftell(file);
     if (size<128 || size>32*1024*1024 || fseek(file,0,SEEK_SET)) { DIAG_ERROR("bundle.size",0,"Rejected bundle size/seek: %s size=%ld",source->title,size); fclose(file); return -1; }

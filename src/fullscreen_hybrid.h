@@ -153,7 +153,7 @@ static int hybrid_prepare_once(int pid, struct source *sources, int *attached, i
     } else printf("Hybrid INI not used: %s (%s)\n",hc_load_reason(cache_result),HYBRID_CACHE_PATH);
     hybrid_cache_status="miss";
     REPORT_TIMER("cache_attempt",cache_started);
-    puts("Hybrid fallback: current system bundles -> fast native anchors");
+    puts("Hybrid fallback: selected RNPS bundles -> fast native anchors");
     DIAG_STEP("hermes.discovery"); DIAG_EVENT("Hermes dynamic discovery started");
     if(load_source(&sources[0],1) || load_source(&sources[1],0))return -1;
     int located=locate_sources_fast(pid,sources,2,attached);
