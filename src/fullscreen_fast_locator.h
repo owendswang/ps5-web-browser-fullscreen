@@ -4,7 +4,7 @@
 #include "fixed_profile_export.h"
 #include "diagnostic_events.h"
 #include "scan_observations.h"
-#if FULLSCREEN_LIVE_PLAN || TEST_HBC_EXPORT
+#if FULLSCREEN_LIVE_PLAN
 #include "hbc_candidate_export.h"
 #endif
 #if FULLSCREEN_LIVE_PLAN && DIAG_DEEP
@@ -95,7 +95,7 @@ struct anchor_hbc_samples {
     struct { uintptr_t base; uint8_t header[128]; } samples[8];
 };
 static void anchor_sample_hbc(void *context,uintptr_t base,const uint8_t *header) {
-#if FULLSCREEN_LIVE_PLAN || TEST_HBC_EXPORT
+#if FULLSCREEN_LIVE_PLAN
     hbc_candidate_note(base,header);
 #endif
     struct anchor_hbc_samples *s=context; s->observed++;
@@ -189,7 +189,7 @@ static void anchor_report_hbc(const struct anchor_hbc_samples *s) {
     }
 }
 static int locate_sources_fast(int pid, struct source *sources, size_t count, int *attached) {
-#if FULLSCREEN_LIVE_PLAN || TEST_HBC_EXPORT
+#if FULLSCREEN_LIVE_PLAN
     hbc_candidate_reset(pid);
 #endif
     scan_native_reset(pid);

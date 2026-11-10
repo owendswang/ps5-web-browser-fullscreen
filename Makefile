@@ -12,16 +12,15 @@ ifeq ($(FULLSCREEN_DEBUG),1)
 CFLAGS += -g
 endif
 DIAG_FLAGS := -DDIAG_DEEP=$(DEEP_DIAGNOSTICS)
-COMMON_FLAGS := -DTEST_HBC_EXPORT=0 -DTEST_HERMES_EXPORT=0
-RELEASE_FLAGS := $(COMMON_FLAGS) -DFULLSCREEN_LIVE_PLAN=0 -DFULLSCREEN_SAFE_SCAN=0
-TEST_FLAGS := $(COMMON_FLAGS) -DFULLSCREEN_LIVE_PLAN=1 -DFULLSCREEN_SAFE_SCAN=1
+RELEASE_FLAGS := -DFULLSCREEN_LIVE_PLAN=0 -DFULLSCREEN_SAFE_SCAN=0
+TEST_FLAGS := -DFULLSCREEN_LIVE_PLAN=1 -DFULLSCREEN_SAFE_SCAN=1
 HOST_CC ?= cc
 HEADERS := $(wildcard src/*.h)
 SOURCES := src/main.c src/hbc_patch.c
 LIBS := -lSceUserService -lSceSystemService
-TEST_ELFS := web-browser-fullscreen-test.elf web-browser-restore-test.elf web-browser-inspect-test.elf
+TEST_ELFS := web-browser-fullscreen-test.elf web-browser-restore-test.elf
 
-.PHONY: all inspect test profile-tool opcodes jsc-hook clean
+.PHONY: all test profile-tool opcodes jsc-hook clean
 all: web-browser-fullscreen.elf web-browser-restore.elf
 
 web-browser-fullscreen.elf: $(SOURCES) $(HEADERS) Makefile
@@ -30,10 +29,6 @@ web-browser-fullscreen.elf: $(SOURCES) $(HEADERS) Makefile
 web-browser-restore.elf: $(SOURCES) $(HEADERS) Makefile
 	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(RELEASE_FLAGS) -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
 
-inspect: web-browser-inspect.elf
-web-browser-inspect.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(RELEASE_FLAGS) -DLOCATE_ONLY=1 -o $@ $(SOURCES) $(LIBS)
-
 test: $(TEST_ELFS)
 
 web-browser-fullscreen-test.elf: $(SOURCES) $(HEADERS) Makefile
@@ -41,9 +36,6 @@ web-browser-fullscreen-test.elf: $(SOURCES) $(HEADERS) Makefile
 
 web-browser-restore-test.elf: $(SOURCES) $(HEADERS) Makefile
 	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(TEST_FLAGS) -DRESTORE=1 -o $@ $(SOURCES) $(LIBS)
-
-web-browser-inspect-test.elf: $(SOURCES) $(HEADERS) Makefile
-	$(CC) $(CFLAGS) $(DIAG_FLAGS) $(TEST_FLAGS) -DLOCATE_ONLY=1 -o $@ $(SOURCES) $(LIBS)
 
 profile-tool: src/profile_tool.c $(HEADERS)
 	$(HOST_CC) -std=c11 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror -O2 -Isrc src/profile_tool.c -o profile-tool
@@ -55,4 +47,4 @@ jsc-hook:
 	python3 src/generate_jsc_hook.py
 
 clean:
-	$(RM) web-browser-fullscreen.elf web-browser-restore.elf web-browser-inspect.elf $(TEST_ELFS) profile-tool
+	$(RM) web-browser-fullscreen.elf web-browser-restore.elf web-browser-inspect.elf web-browser-inspect-test.elf $(TEST_ELFS) profile-tool

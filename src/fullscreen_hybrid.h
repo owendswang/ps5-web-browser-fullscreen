@@ -16,9 +16,6 @@
 #ifndef FULLSCREEN_SAFE_SCAN
 #define FULLSCREEN_SAFE_SCAN 0
 #endif
-#ifndef FULLSCREEN_MAPS_ONLY
-#define FULLSCREEN_MAPS_ONLY 0
-#endif
 static struct hybrid_cache hybrid_record;
 static struct hybrid_cache hybrid_disk_record;
 static int hybrid_pending;
@@ -180,17 +177,12 @@ static int hybrid_safe_prepare(int pid, struct source *sources, int *attached) {
     hybrid_pending=0; hybrid_discovered_valid=0;
     START_TIMER(safe_started);
     DIAG_STEP("hermes.safe_scan");
-    if(FULLSCREEN_MAPS_ONLY) {
-        DIAG_EVENT("Passive fallback: VM metadata and known HBC address coverage only");
-        puts("Passive fallback: VM metadata only; no bulk process-memory reads");
-    } else {
-        DIAG_EVENT("Final fallback: expanded safe scan, 64 KiB reads; one pass only");
-        puts("Final fallback: expanded safe scan; this may take several seconds");
-    }
+    DIAG_EVENT("Final fallback: expanded safe scan, 64 KiB reads; one pass only");
+    puts("Final fallback: expanded safe scan; this may take several seconds");
     int scanned=locate_sources_safe(pid,sources,2);
     REPORT_TIMER("safe_scan",safe_started);
     if(scanned) {
-        if(scanned==1 && !FULLSCREEN_MAPS_ONLY) {
+        if(scanned==1) {
 #ifdef FULLSCREEN_SCAN_HAS_COVERAGE
             if(scan_omitted_oversized_bytes)
                 DIAG_ERROR("hermes.targets_unlocated",0,"HBC targets unlocated in selected windows; oversized readable mappings omitted (%llu bytes)",(unsigned long long)scan_omitted_oversized_bytes);
@@ -233,10 +225,6 @@ static int hybrid_prepare(int *target_pid, struct source *sources, int *attached
         int live=hybrid_live_prepare(pid,sources,attached);
         if(live<=0)return live;
     }
-#endif
-#if FULLSCREEN_SAFE_SCAN && FULLSCREEN_MAPS_ONLY
-    if(!result || result==HA_MISSING || result==HA_UNSUPPORTED)
-        return hybrid_safe_prepare(pid,sources,attached);
 #endif
     if((result!=HA_MISSING && result!=HA_UNSUPPORTED) || !HYBRID_AUTO_BROWSER)return result;
     /* Never issue UI requests or wait while ShellUI is stopped. Discard every

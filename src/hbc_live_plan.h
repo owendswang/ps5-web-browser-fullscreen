@@ -53,7 +53,7 @@ static int hybrid_live_prepare(int pid,struct source *sources,int *attached) {
     int result=-1;
     hybrid_pending=0; hybrid_discovered_valid=0;
     DIAG_STEP("hermes.live_semantic");
-    DIAG_EVENT("Live HBC plan: unique role candidates; full semantic analysis in RAM; dump disabled=%u",!TEST_HBC_EXPORT);
+    DIAG_EVENT("Live HBC plan: unique role candidates; full semantic analysis in RAM; dump disabled=1");
     for(unsigned i=0;i<2;i++) {
         unsigned candidate=selected[i];
         expected[i]=hbc_candidate_inventory.items[candidate].base;

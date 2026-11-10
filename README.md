@@ -41,7 +41,7 @@ For diagnostic test builds:
 make test
 ```
 
-Outputs: `web-browser-fullscreen-test.elf`, `web-browser-restore-test.elf` and `web-browser-inspect-test.elf`. Send them in the same way. Test builds additionally enable a slow memory scan as the final fallback.
+Outputs: `web-browser-fullscreen-test.elf` and `web-browser-restore-test.elf`. Send them in the same way. Test builds additionally enable a slow memory scan as the final fallback.
 
 ## How it works
 

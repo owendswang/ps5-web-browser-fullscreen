@@ -103,7 +103,6 @@ static int jsc_run(int pid, int *attached, const char **failure) {
     context.state[0]=cave+JSC_TRAMPOLINE_OFFSET;
     if(jsc_build_image(p,context.base,context.state,code,constants,detour))return 1;
     printf("JSC verified: hook=%s enabled=%lu\n",snapshot.initialized?"installed":"absent",(unsigned long)snapshot.enabled);
-    if(LOCATE_ONLY)return 0;
     DIAG_STEP("jsc.transaction");
     const uint8_t *wanted=RESTORE?p->fingerprint:detour;
     unsigned n=p->entry_length;

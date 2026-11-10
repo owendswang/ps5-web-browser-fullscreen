@@ -10,9 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#if TEST_HBC_EXPORT
-#include <zlib.h>
-#endif
 
 #define HBC_DUMP_RAW_MAX (8U*1024*1024)
 #define HBC_DUMP_GZIP_MAX (4U*1024*1024)
@@ -97,44 +94,4 @@ static inline const char *hbc_candidate_read(int (*read_memory)(void *,uintptr_t
 done:
     free(raw); return failure;
 }
-#if TEST_HBC_EXPORT
-static inline const char *hbc_dump_capture(int (*read_memory)(void *,uintptr_t,void *,size_t),
-        void *context,uintptr_t base,const uint8_t header[128],unsigned index,
-        const char *path,struct hbc_dump_result *out) {
-    uint8_t *raw=NULL,*packed=NULL;
-    const char *failure=hbc_candidate_read(read_memory,context,base,header,index,&raw,out);
-    if(failure)return failure;
-    size_t length=out->raw_bytes; out->raw_bytes=0;
-    packed=malloc(HBC_DUMP_GZIP_MAX);
-    if(!packed) { failure="allocation"; goto done; }
-    z_stream z={0};
-    if(deflateInit2(&z,6,Z_DEFLATED,15+16,8,Z_DEFAULT_STRATEGY)!=Z_OK) { failure="gzip_init"; goto done; }
-    z.next_in=raw; z.avail_in=(uInt)length;
-    z.next_out=packed; z.avail_out=HBC_DUMP_GZIP_MAX;
-    int compressed=deflate(&z,Z_FINISH);
-    size_t packed_length=z.total_out;
-    deflateEnd(&z);
-    if(compressed!=Z_STREAM_END) { failure="gzip_size_or_compression"; goto done; }
-    out->raw_crc32=(uint32_t)crc32(0,raw,(uInt)length);
-    char temporary[256];
-    int n=snprintf(temporary,sizeof(temporary),"%s.tmp-%d",path,(int)getpid());
-    if(n<0 || (size_t)n>=sizeof(temporary)) { failure="path_length"; goto done; }
-    int fd=open(temporary,O_WRONLY|O_CREAT|O_EXCL,0600);
-    if(fd<0) { failure="file_open"; goto done; }
-    failure=NULL;
-    for(size_t at=0;at<packed_length;) {
-        ssize_t wrote=write(fd,packed+at,packed_length-at);
-        if(wrote<0 && errno==EINTR)continue;
-        if(wrote<=0) { failure="file_write"; break; }
-        at+=(size_t)wrote;
-    }
-    if(!failure && fsync(fd))failure="file_sync";
-    if(close(fd) && !failure)failure="file_close";
-    if(!failure && rename(temporary,path))failure="file_rename";
-    if(failure)unlink(temporary);
-    else { out->raw_bytes=length; out->gzip_bytes=packed_length; }
-done:
-    free(raw); free(packed); return failure;
-}
-#endif
 #endif

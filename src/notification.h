@@ -12,15 +12,15 @@ struct fullscreen_notification {
 _Static_assert(sizeof(struct fullscreen_notification)==3120,"Notification request ABI");
 int sceKernelSendNotificationRequest(int, struct fullscreen_notification *, size_t, int);
 
-static void notify_result(int result, int restore, int inspect, const char *failure) {
+static void notify_result(int result, int restore, const char *failure) {
     struct fullscreen_notification request={0};
-    const char *operation=inspect?"Browser inspection":restore?"Browser layout restore":"Browser fullscreen";
+    const char *operation=restore?"Browser layout restore":"Browser fullscreen";
     if(result==1)
         snprintf(request.message,sizeof(request.message),"%s failed: %s. Diagnostics, if saved: /data/web-browser-fullscreen.ini",operation,failure);
     else if(result==2)
         snprintf(request.message,sizeof(request.message),"%s succeeded; INI update failed: /data/web-browser-fullscreen.ini",operation);
     else
-        snprintf(request.message,sizeof(request.message),"%s succeeded.%s",operation,inspect?"":" Reopen the browser.");
+        snprintf(request.message,sizeof(request.message),"%s succeeded. Reopen the browser.",operation);
     int ret=sceKernelSendNotificationRequest(0,&request,sizeof(request),0);
     printf("Notification: %s (send=%#x)\n",request.message,ret);
 }

@@ -5,9 +5,6 @@
 #include "scan_windows.h"
 #include "diagnostic_events.h"
 #include "scan_observations.h"
-#ifndef FULLSCREEN_MAPS_ONLY
-#define FULLSCREEN_MAPS_ONLY 0
-#endif
 #define FAST_READ_BYTES (1024U*1024U)
 #ifndef FAST_PRUNE
 #define FAST_PRUNE 1
@@ -88,11 +85,6 @@ static int locate_scan(int pid, struct source *sources, size_t count, int mode) 
         }
     }
     scan_report_native_maps(pid,regions,map_count,windows,window_count);
-    if(FULLSCREEN_MAPS_ONLY) {
-        DIAG_EVENT("Passive VM inventory: bulk_process_reads=0; selected ranges are planned only");
-        DIAG_ERROR("hermes.scan.metadata_only",0,"VM inventory complete; bulk memory scan, browser bootstrap and SELF export disabled");
-        free(regions); free(windows); free(maps); free(buf); return 1;
-    }
     struct scan_target_stats *stats=calloc(count,sizeof(*stats));
     if(!stats)DIAG_EVENT("Scan target diagnostic allocation failed; continuing verified scan");
     size_t scanned=0, read_calls=0, next_progress=256*1024*1024;
