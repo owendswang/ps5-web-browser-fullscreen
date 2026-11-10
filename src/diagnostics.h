@@ -8,13 +8,13 @@
 #if FULLSCREEN_PASSIVE_DIAGNOSTICS
 #define DIAG_BUILD "2026-10-28-passive-vm-diagnostics-v5"
 #elif FULLSCREEN_SAFE_SCAN && FULLSCREEN_LIVE_PLAN
-#define DIAG_BUILD "2026-11-09-test-pr6-offsets"
+#define DIAG_BUILD "2026-11-10-test-rnps-discovery"
 #elif TEST_HBC_EXPORT
 #define DIAG_BUILD "2026-10-28-test-hbc-evidence-v7"
 #elif FULLSCREEN_SAFE_SCAN
 #define DIAG_BUILD "2026-10-28-test-open-home-v6"
 #else
-#define DIAG_BUILD "2026-11-09-pr6-offsets"
+#define DIAG_BUILD "2026-11-10-rnps-discovery"
 #endif
 enum { DIAG_EVENTS=256, DIAG_EVENT_BYTES=192, DIAG_CAPACITY=54272 };
 _Static_assert(DIAG_CAPACITY+HYBRID_CACHE_CAPACITY<INI_FILE_CAPACITY,"profile and report capacity");
